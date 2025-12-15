@@ -1,6 +1,6 @@
 [package]
 name = "kraken-ws-sdk"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.70"
 description = "A high-performance, production-grade SDK for Kraken's WebSocket API with backpressure control, latency tracking, and chaos engineering support"
@@ -13,8 +13,7 @@ readme = "README.md"
 authors = ["Kraken WS SDK Contributors"]
 
 [features]
-default = ["native"]
-native = ["tokio-tungstenite/native-tls"]
+default = []
 wasm = ["wasm-bindgen", "js-sys", "web-sys"]
 chaos = []  # Enable chaos/fault injection features
 metrics = []  # Enable Prometheus-style metrics export

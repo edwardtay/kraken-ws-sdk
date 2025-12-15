@@ -3,8 +3,13 @@
 //! A lightweight, high-performance SDK for connecting to Kraken's WebSocket API
 //! and processing real-time market data streams.
 //!
+//! ## Features
+//! - `wasm` - Enable WebAssembly support (mutually exclusive with native tokio runtime)
+//! - `chaos` - Enable chaos/fault injection features
+//! - `metrics` - Enable Prometheus-style metrics export
+//!
 //! ## Quick Start
-//! ```rust
+//! ```rust,ignore
 //! use kraken_ws_sdk::prelude::*;
 //!
 //! let sdk = KrakenSDK::default();
@@ -12,6 +17,10 @@
 //!    .subscribe_orderbook("ETH/USD", 10, |b| println!("{} bids", b.bids.len()))
 //!    .on_reconnect(|n| println!("Reconnect #{}", n));
 //! ```
+
+// Compile-time check: wasm feature uses different runtime, not compatible with native tokio
+#[cfg(all(feature = "wasm", not(target_arch = "wasm32")))]
+compile_error!("The `wasm` feature should only be enabled when targeting wasm32. Use `--target wasm32-unknown-unknown`.");
 
 pub mod backpressure;
 pub mod client;
