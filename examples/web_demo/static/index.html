@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kraken WebSocket SDK - Observability Console</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg-primary: #111;
+            --bg-secondary: #1a1a1a;
+            --bg-card: #222;
+            --accent-green: #6c6;
+            --accent-red: #c66;
+            --accent-blue: #68a;
+            --accent-orange: #a86;
+            --text-primary: #ccc;
+            --text-secondary: #777;
+            --border-color: #333;
+        }
+        body { font-family: 'SF Mono', 'Monaco', 'Menlo', monospace; background: var(--bg-primary); color: var(--text-primary); font-size: 12px; }
+        .dashboard { display: grid; gap: 8px; padding: 8px; max-width: 1600px; margin: 0 auto; }
+        
+        .header { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: var(--bg-secondary); border: 1px solid var(--border-color); }
+        .header-left { display: flex; align-items: center; gap: 10px; }
+        .logo { display: flex; align-items: center; gap: 6px; }
+        .logo h1 { font-size: 1rem; color: var(--text-primary); font-weight: 500; }
+        .logo-icon { font-size: 1.2rem; }
+        .logo-sub { color: var(--text-secondary); font-size: 0.6rem; letter-spacing: 0.5px; }
+        .wasm-badge { background: var(--bg-card); color: var(--accent-orange); padding: 2px 6px; border: 1px solid var(--border-color); font-size: 0.6rem; font-weight: 500; }
+        
+        .header-center { display: flex; align-items: center; gap: 4px; }
+        .btn { padding: 4px 8px; border: 1px solid var(--border-color); cursor: pointer; font-weight: 400; font-size: 0.65rem; transition: all 0.15s; display: flex; align-items: center; gap: 3px; background: var(--bg-card); color: var(--text-primary); }
+        .btn-primary { border-color: var(--accent-blue); color: var(--accent-blue); }
+        .btn-secondary { }
+        .btn-sm { padding: 3px 6px; font-size: 0.6rem; }
+        .btn:hover { background: var(--bg-secondary); border-color: var(--text-secondary); }
+        
+        .header-right { display: flex; align-items: center; gap: 8px; }
+        .status-badge { display: flex; align-items: center; gap: 4px; padding: 3px 8px; background: var(--bg-card); border: 1px solid var(--border-color); font-size: 0.65rem; }
+        .status-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent-green); }
+        .status-dot.disconnected { background: var(--accent-red); }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        
+        .stats-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+        .stat-card { background: var(--bg-secondary); padding: 6px; border: 1px solid var(--border-color); text-align: center; }
+        .stat-value { font-size: 0.95rem; font-weight: 500; color: var(--text-primary); }
+        .stat-label { font-size: 0.55rem; color: var(--text-secondary); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+        
+        .latency-panel { background: var(--bg-secondary); border: 1px solid var(--border-color); padding: 6px 8px; }
+        .section-title { font-size: 0.7rem; font-weight: 500; margin-bottom: 4px; display: flex; align-items: center; gap: 4px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+        .latency-content { display: flex; gap: 6px; align-items: stretch; }
+        .latency-stats-row { display: flex; gap: 3px; flex: 0 0 auto; }
+        .latency-stat { background: var(--bg-card); padding: 3px 6px; text-align: center; min-width: 45px; border: 1px solid var(--border-color); }
+        .latency-stat-label { font-size: 0.5rem; color: var(--text-secondary); text-transform: uppercase; }
+        .latency-stat-value { font-size: 0.75rem; font-weight: 500; }
+        .latency-histogram { background: var(--bg-card); padding: 3px; flex: 1; min-width: 100px; height: 36px; border: 1px solid var(--border-color); }
+        
+        .main-content { display: grid; grid-template-columns: 2fr 1fr; gap: 6px; }
+        .market-section { background: var(--bg-secondary); border: 1px solid var(--border-color); padding: 6px 8px; }
+        .market-grid { display: grid; gap: 4px; }
+        .market-card { background: var(--bg-card); padding: 8px; border: 1px solid var(--border-color); transition: border-color 0.15s; }
+        .market-card:hover { border-color: var(--text-secondary); }
+        .market-card.price-up { border-left: 2px solid var(--accent-green); }
+        .market-card.price-down { border-left: 2px solid var(--accent-red); }
+        .market-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+        .symbol { font-size: 0.85rem; font-weight: 500; }
+        .symbol-icon { font-size: 0.85rem; margin-right: 3px; }
+        .price-display { text-align: right; }
+        .current-price { font-size: 1rem; font-weight: 500; }
+        .price-change { font-size: 0.6rem; padding: 1px 4px; display: inline-block; }
+        .price-change.up { color: var(--accent-green); }
+        .price-change.down { color: var(--accent-red); }
+        .market-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; margin-top: 4px; }
+        .market-stat { background: var(--bg-primary); padding: 3px 4px; border: 1px solid var(--border-color); }
+        .market-stat-label { font-size: 0.5rem; color: var(--text-secondary); text-transform: uppercase; }
+        .market-stat-value { font-size: 0.7rem; font-weight: 500; }
+        .market-stat-value.bid { color: var(--accent-green); }
+        .market-stat-value.ask { color: var(--accent-red); }
+        .mini-chart { height: 28px; margin-top: 4px; opacity: 0.6; }
+        
+        .sidebar { display: flex; flex-direction: column; gap: 6px; }
+        .alerts-section, .activity-section { background: var(--bg-secondary); border: 1px solid var(--border-color); padding: 6px 8px; flex: 1; }
+        .alert-item { display: flex; align-items: flex-start; gap: 4px; padding: 4px; background: var(--bg-card); border: 1px solid var(--border-color); margin-bottom: 3px; font-size: 0.6rem; }
+        .alert-item.triggered { border-left: 2px solid var(--accent-green); }
+        .alert-item.pending { border-left: 2px solid var(--accent-orange); opacity: 0.6; }
+        @keyframes alertPulse { 0% { background: var(--bg-secondary); } 100% { background: var(--bg-card); } }
+        .alert-icon { font-size: 0.75rem; flex-shrink: 0; }
+        .alert-content { flex: 1; min-width: 0; }
+        .alert-title { font-weight: 500; font-size: 0.65rem; }
+        .alert-time { font-size: 0.55rem; color: var(--text-secondary); }
+        .alert-meta { font-size: 0.5rem; color: var(--text-secondary); margin-top: 1px; }
+        .alert-seq { color: var(--accent-blue); }
+        
+        /* Pair Selector */
+        .pair-selector { background: var(--bg-secondary); border: 1px solid var(--border-color); padding: 6px 8px; }
+        .pair-selector .section-title { margin-bottom: 6px; }
+        .pair-controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+        .pair-select { background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-primary); padding: 4px 8px; font-size: 0.65rem; min-width: 100px; font-family: inherit; }
+        .pair-select:focus { outline: none; border-color: var(--text-secondary); }
+        .pair-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
+        .pair-tag { font-size: 0.55rem; padding: 2px 6px; background: var(--bg-card); border: 1px solid var(--border-color); cursor: pointer; transition: border-color 0.15s; }
+        .pair-tag:hover { border-color: var(--text-secondary); }
+        .pair-tag.active { border-color: var(--accent-blue); color: var(--accent-blue); }
+        .pair-tag .remove { margin-left: 3px; opacity: 0.5; }
+        .pair-tag .remove:hover { opacity: 1; color: var(--accent-red); }
+        .pair-info { font-size: 0.55rem; color: var(--text-secondary); margin-left: auto; }
+        .activity-item { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; border-bottom: 1px solid var(--border-color); }
+        .activity-item:last-child { border-bottom: none; }
+        .activity-type { font-size: 0.55rem; padding: 1px 4px; font-weight: 500; }
+        .activity-type.buy { color: var(--accent-green); }
+        .activity-type.sell { color: var(--accent-red); }
+        
+        .footer { text-align: center; padding: 4px; color: var(--text-secondary); font-size: 0.55rem; display: flex; justify-content: center; align-items: center; gap: 12px; border-top: 1px solid var(--border-color); margin-top: 4px; }
+        .footer a { color: var(--text-secondary); text-decoration: none; }
+        .footer a:hover { color: var(--text-primary); }
+        .sdk-badge { background: var(--bg-card); padding: 2px 6px; border: 1px solid var(--border-color); }
+        
+        /* SDK Hero Banner */
+        .sdk-hero { background: var(--bg-card); border: 1px solid var(--accent-blue); padding: 6px 10px; text-align: center; font-size: 0.6rem; color: var(--text-secondary); }
+        .sdk-hero strong { color: var(--accent-blue); }
+        
+        /* SDK API Panel */
+        .sdk-api-panel { background: var(--bg-secondary); border: 1px solid var(--border-color); padding: 6px 8px; }
+        .sdk-api-panel .section-title { color: var(--accent-blue); }
+        .sdk-api-code { background: var(--bg-card); border: 1px solid var(--border-color); padding: 6px 8px; font-size: 0.55rem; line-height: 1.5; max-height: 120px; overflow-y: auto; }
+        .sdk-api-code .fn { color: var(--accent-blue); }
+        .sdk-api-code .param { color: var(--accent-orange); }
+        .sdk-api-code .comment { color: var(--text-secondary); }
+        .sdk-api-code .type { color: var(--accent-green); }
+        
+        /* SDK Internal State Panel */
+        .sdk-state-panel { background: var(--bg-secondary); border: 1px solid var(--border-color); padding: 6px 8px; }
+        .sdk-state-panel .section-title { }
+        .sdk-state-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 4px; }
+        .sdk-state-item { background: var(--bg-card); padding: 4px 8px; border: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+        .sdk-state-label { font-size: 0.6rem; color: var(--text-secondary); display: flex; align-items: center; gap: 3px; }
+        .sdk-state-value { font-size: 0.75rem; font-weight: 500; }
+        .sdk-state-value.connected { color: var(--accent-green); }
+        .sdk-state-value.disconnected { color: var(--accent-red); }
+        .sdk-state-value.warning { color: var(--accent-orange); }
+        .sdk-state-value.info { color: var(--accent-blue); }
+        .sdk-subscriptions { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 3px; }
+        .sdk-sub-tag { font-size: 0.55rem; padding: 1px 4px; color: var(--accent-green); border: 1px solid var(--border-color); }
+        .sdk-sub-tag.pending { color: var(--accent-orange); }
+        .sdk-state-details { margin-top: 4px; font-size: 0.55rem; background: var(--bg-card); padding: 4px; border: 1px solid var(--border-color); max-height: 50px; overflow-y: auto; }
+        .sdk-state-row { display: flex; justify-content: space-between; padding: 1px 0; border-bottom: 1px solid var(--border-color); }
+        .sdk-state-row:last-child { border-bottom: none; }
+        
+        /* Raw WS Frames Inspector */
+        .ws-inspector { background: var(--bg-secondary); border: 1px solid var(--border-color); padding: 6px 8px; }
+        .ws-inspector .section-title { }
+        .ws-frames { max-height: 120px; overflow-y: auto; font-size: 0.55rem; background: var(--bg-card); border: 1px solid var(--border-color); }
+        .ws-frame { padding: 3px 6px; border-bottom: 1px solid var(--border-color); display: grid; grid-template-columns: 65px 45px 1fr; gap: 6px; align-items: start; }
+        .ws-frame:last-child { border-bottom: none; }
+        .ws-frame:hover { background: var(--bg-secondary); }
+        .ws-frame-time { color: var(--text-secondary); }
+        .ws-frame-type { padding: 1px 3px; font-weight: 500; font-size: 0.5rem; text-align: center; border: 1px solid var(--border-color); }
+        .ws-frame-type.ticker { color: var(--accent-green); }
+        .ws-frame-type.trade { color: var(--accent-orange); }
+        .ws-frame-type.system { color: var(--accent-blue); }
+        .ws-frame-type.error { color: var(--accent-red); }
+        .ws-frame-data { color: var(--text-primary); word-break: break-all; line-height: 1.3; }
+        .ws-frame-data .key { color: var(--accent-blue); }
+        .ws-frame-data .string { color: var(--accent-green); }
+        .ws-frame-data .number { color: var(--accent-orange); }
+        .ws-inspector-controls { display: flex; gap: 6px; margin-bottom: 4px; align-items: center; }
+        .ws-inspector-stats { font-size: 0.55rem; color: var(--text-secondary); margin-left: auto; }
+        .ws-inspector-stats span { margin-left: 8px; }
+        
+        /* Fault Injection Panel */
+        .fault-panel { background: var(--bg-secondary); border: 1px solid var(--border-color); padding: 6px 8px; }
+        .fault-panel .section-title { }
+        .fault-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .fault-toggle { display: flex; align-items: center; gap: 4px; background: var(--bg-card); padding: 4px 8px; cursor: pointer; transition: border-color 0.15s; border: 1px solid var(--border-color); }
+        .fault-toggle:hover { border-color: var(--text-secondary); }
+        .fault-toggle.active { border-color: var(--accent-red); }
+        .fault-toggle input { display: none; }
+        .fault-toggle-switch { width: 24px; height: 12px; background: var(--bg-primary); border: 1px solid var(--border-color); position: relative; transition: all 0.15s; }
+        .fault-toggle-switch::after { content: ''; position: absolute; width: 8px; height: 8px; background: var(--text-secondary); top: 1px; left: 1px; transition: all 0.15s; }
+        .fault-toggle.active .fault-toggle-switch { background: var(--accent-red); border-color: var(--accent-red); }
+        .fault-toggle.active .fault-toggle-switch::after { left: 13px; background: var(--bg-primary); }
+        .fault-toggle-label { font-size: 0.6rem; font-weight: 500; }
+        .fault-status { display: flex; gap: 6px; margin-left: auto; }
+        .fault-indicator { font-size: 0.55rem; padding: 2px 6px; background: var(--bg-card); border: 1px solid var(--border-color); }
+        .fault-indicator.active { color: var(--accent-red); }
+        .fault-indicator.recovered { color: var(--accent-green); }
+        @keyframes fadeOut { 0% { opacity: 1; } 100% { opacity: 0.5; } }
+        .fault-log { margin-top: 6px; max-height: 50px; overflow-y: auto; font-size: 0.55rem; background: var(--bg-card); padding: 4px; border: 1px solid var(--border-color); }
+        .fault-log-entry { padding: 1px 0; border-bottom: 1px solid var(--border-color); }
+        .fault-log-entry:last-child { border-bottom: none; }
+        .fault-log-entry.error { color: var(--accent-red); }
+        .fault-log-entry.warn { color: var(--accent-orange); }
+        .fault-log-entry.success { color: var(--accent-green); }
+        
+        /* Tablet */
+        @media (max-width: 1024px) {
+            .main-content { grid-template-columns: 1fr; }
+            .stats-row { grid-template-columns: repeat(3, 1fr); }
+            .market-stats { grid-template-columns: repeat(2, 1fr); }
+        }
+        
+        /* Mobile */
+        @media (max-width: 768px) {
+            body { font-size: 11px; }
+            .dashboard { gap: 6px; padding: 6px; }
+            
+            .header { flex-direction: column; gap: 6px; padding: 6px; }
+            .header-left { width: 100%; justify-content: space-between; }
+            .header-center { width: 100%; justify-content: center; }
+            .header-right { width: 100%; justify-content: center; }
+            .logo h1 { font-size: 0.9rem; }
+            .logo-icon { font-size: 1rem; }
+            
+            .stats-row { grid-template-columns: repeat(3, 1fr); gap: 3px; }
+            .stat-card { padding: 4px; }
+            .stat-value { font-size: 0.85rem; }
+            
+            .latency-content { flex-direction: column; gap: 4px; }
+            .latency-stats-row { flex-wrap: wrap; justify-content: center; gap: 2px; }
+            .latency-histogram { height: 30px; min-width: 100%; }
+            
+            .main-content { grid-template-columns: 1fr; gap: 6px; }
+            .market-card { padding: 6px; }
+            .market-header { flex-direction: column; align-items: flex-start; gap: 3px; }
+            .price-display { width: 100%; display: flex; justify-content: space-between; align-items: center; }
+            .current-price { font-size: 0.9rem; }
+            .market-stats { grid-template-columns: repeat(2, 1fr); gap: 2px; }
+            .mini-chart { height: 24px; }
+            
+            .sidebar { flex-direction: row; }
+            .section-title { font-size: 0.6rem; margin-bottom: 3px; }
+            
+            .footer { flex-wrap: wrap; gap: 6px; padding: 6px; }
+            
+            .fault-controls { gap: 4px; }
+            .fault-toggle { padding: 3px 5px; }
+            .fault-toggle-switch { width: 20px; height: 10px; }
+            .fault-toggle-switch::after { width: 6px; height: 6px; }
+            .fault-toggle.active .fault-toggle-switch::after { left: 11px; }
+            .fault-status { width: 100%; justify-content: center; margin-left: 0; margin-top: 4px; }
+            
+            .ws-inspector-controls { flex-wrap: wrap; gap: 3px; }
+            .ws-inspector-stats { width: 100%; margin-top: 3px; margin-left: 0; display: flex; justify-content: space-around; }
+            .ws-frames { max-height: 80px; }
+            .ws-frame { grid-template-columns: 55px 40px 1fr; gap: 3px; padding: 2px 4px; }
+            
+            .sdk-state-grid { grid-template-columns: repeat(2, 1fr); gap: 3px; }
+            .sdk-state-item { padding: 3px 5px; }
+        }
+        
+        /* Small Mobile */
+        @media (max-width: 480px) {
+            .stats-row { grid-template-columns: repeat(2, 1fr); }
+            .sidebar { flex-direction: column; }
+            .btn-sm { padding: 2px 4px; font-size: 0.55rem; }
+            .header-center { gap: 3px; }
+            .latency-stats-row { gap: 1px; }
+            .latency-stat { min-width: 35px; padding: 2px 3px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div class="header">
+            <div class="header-left">
+                <div class="logo">
+                    <div>
+                        <h1>kraken-ws-sdk</h1>
+                        <p class="logo-sub">observability console | reference client | debug ui</p>
+                    </div>
+                </div>
+                <span class="wasm-badge">wasm</span>
+            </div>
+            <div class="header-center">
+                <button class="btn btn-primary btn-sm" onclick="reconnectWebSocket()">reconnect</button>
+                <button class="btn btn-secondary btn-sm" onclick="toggleUpdates()">pause</button>
+                <button class="btn btn-secondary btn-sm" onclick="clearData()">clear</button>
+            </div>
+            <div class="header-right">
+                <div class="status-badge">
+                    <div class="status-dot" id="statusIndicator"></div>
+                    <span id="connectionStatus">Connecting...</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- SDK Hero Banner -->
+        <div class="sdk-hero">
+            this console is a <strong>reference client</strong> built on top of the <strong>kraken-ws-sdk</strong> — proving the sdk works under stress, exposes internals, and helps developers debug
+        </div>
+        
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-value" id="activeSymbols">0</div>
+                <div class="stat-label">pairs</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="messagesPerSec">0</div>
+                <div class="stat-label">msg/s</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="droppedCount" style="color: var(--accent-red);">0</div>
+                <div class="stat-label">dropped</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="coalescedCount" style="color: var(--accent-green);">0</div>
+                <div class="stat-label">coalesced</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="latencyP95">--</div>
+                <div class="stat-label">p95</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="lastUpdate">--:--:--</div>
+                <div class="stat-label">updated</div>
+            </div>
+        </div>
+        
+        <div class="latency-panel">
+            <div class="section-title">latency (exchange → client)</div>
+            <div class="latency-content">
+                <div class="latency-stats-row">
+                    <div class="latency-stat"><div class="latency-stat-label">p50</div><div class="latency-stat-value" id="latencyP50" style="color: var(--accent-green);">--</div></div>
+                    <div class="latency-stat"><div class="latency-stat-label">p95</div><div class="latency-stat-value" id="latencyP95Detail" style="color: var(--accent-blue);">--</div></div>
+                    <div class="latency-stat"><div class="latency-stat-label">p99</div><div class="latency-stat-value" id="latencyP99" style="color: var(--accent-orange);">--</div></div>
+                    <div class="latency-stat"><div class="latency-stat-label">Max</div><div class="latency-stat-value" id="latencyMax" style="color: var(--accent-red);">--</div></div>
+                    <div class="latency-stat"><div class="latency-stat-label">n</div><div class="latency-stat-value" id="latencySamples">0</div></div>
+                    <div class="latency-stat"><div class="latency-stat-label">μ±σ</div><div class="latency-stat-value" id="latencyMean">--</div></div>
+                </div>
+                <div class="latency-histogram">
+                    <canvas id="latencyHistogram"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <!-- SDK Internal State -->
+        <div class="sdk-state-panel">
+            <div class="section-title">sdk state</div>
+            <div class="sdk-state-grid">
+                <div class="sdk-state-item">
+                    <span class="sdk-state-label">conn</span>
+                    <span class="sdk-state-value connected" id="sdkConnState">INIT</span>
+                </div>
+                <div class="sdk-state-item">
+                    <span class="sdk-state-label">subs</span>
+                    <span class="sdk-state-value info" id="sdkSubCount">0</span>
+                </div>
+                <div class="sdk-state-item">
+                    <span class="sdk-state-label">queue</span>
+                    <span class="sdk-state-value" id="sdkQueueSize">0</span>
+                </div>
+                <div class="sdk-state-item">
+                    <span class="sdk-state-label">reconn</span>
+                    <span class="sdk-state-value" id="sdkReconnects">0</span>
+                </div>
+                <div class="sdk-state-item">
+                    <span class="sdk-state-label">dropped</span>
+                    <span class="sdk-state-value warning" id="sdkDropped">0</span>
+                </div>
+                <div class="sdk-state-item">
+                    <span class="sdk-state-label">uptime</span>
+                    <span class="sdk-state-value info" id="sdkUptime">0s</span>
+                </div>
+            </div>
+            <div class="sdk-subscriptions" id="sdkSubscriptions"></div>
+            <div class="sdk-state-details" id="sdkStateDetails"></div>
+        </div>
+        
+        <!-- SDK Public API -->
+        <div class="sdk-api-panel">
+            <div class="section-title">public sdk api</div>
+            <div class="sdk-api-code">
+<span class="comment">// subscription</span>
+<span class="fn">sdk.subscribe_ticker</span>(<span class="param">"BTC/USD"</span>) -> <span class="type">Stream&lt;Tick&gt;</span>
+<span class="fn">sdk.subscribe_orderbook</span>(<span class="param">"ETH/USD"</span>, <span class="param">depth: 10</span>) -> <span class="type">Stream&lt;Book&gt;</span>
+<span class="fn">sdk.subscribe_trades</span>(<span class="param">"SOL/USD"</span>) -> <span class="type">Stream&lt;Trade&gt;</span>
+
+<span class="comment">// event handlers</span>
+<span class="fn">sdk.on_message</span>(<span class="param">|msg|</span> { ... }) -> <span class="type">CallbackId</span>
+<span class="fn">sdk.on_gap_detected</span>(<span class="param">|gap|</span> { ... }) -> <span class="type">CallbackId</span>
+<span class="fn">sdk.on_reconnect</span>(<span class="param">|attempt|</span> { ... }) -> <span class="type">CallbackId</span>
+
+<span class="comment">// backpressure & control</span>
+<span class="fn">sdk.set_backpressure</span>(<span class="type">BackpressureConfig</span> { <span class="param">max_msg_per_sec: 1000</span>, <span class="param">drop_policy: DropOldest</span> })
+<span class="fn">sdk.get_latency_stats</span>() -> <span class="type">LatencyStats</span> { <span class="param">p50, p95, p99, max</span> }
+
+<span class="comment">// middleware & telemetry</span>
+<span class="fn">sdk.add_middleware</span>(<span class="type">LoggingMiddleware</span>::new())
+<span class="fn">sdk.metrics</span>() -> <span class="type">MetricsRegistry</span>
+            </div>
+        </div>
+        
+        <!-- Raw WS Frames Inspector -->
+        <div class="ws-inspector">
+            <div class="section-title">raw frames</div>
+            <div class="ws-inspector-controls">
+                <button class="btn btn-secondary btn-sm" onclick="toggleFrameCapture()">pause</button>
+                <button class="btn btn-secondary btn-sm" onclick="clearFrames()">clear</button>
+                <label style="font-size: 0.7rem; display: flex; align-items: center; gap: 4px;">
+                    <input type="checkbox" id="showRawJson" onchange="toggleRawJson()"> Raw JSON
+                </label>
+                <div class="ws-inspector-stats">
+                    <span><span id="frameCount">0</span> frames</span>
+                    <span><span id="frameBytes">0</span> bytes</span>
+                    <span><span id="frameRate">0</span>/s</span>
+                </div>
+            </div>
+            <div class="ws-frames" id="wsFrames"></div>
+        </div>
+        
+        <!-- Fault Injection Panel -->
+        <div class="fault-panel">
+            <div class="section-title">chaos / fault injection</div>
+            <div class="fault-controls">
+                <label class="fault-toggle" id="toggleDisconnect" onclick="toggleFault('disconnect')">
+                    <div class="fault-toggle-switch"></div>
+                    <span class="fault-toggle-label">disconnect</span>
+                </label>
+                <label class="fault-toggle" id="toggleLatency" onclick="toggleFault('latency')">
+                    <div class="fault-toggle-switch"></div>
+                    <span class="fault-toggle-label">high latency</span>
+                </label>
+                <label class="fault-toggle" id="togglePacketLoss" onclick="toggleFault('packetLoss')">
+                    <div class="fault-toggle-switch"></div>
+                    <span class="fault-toggle-label">packet loss</span>
+                </label>
+                <div class="fault-status">
+                    <span class="fault-indicator" id="reconnectIndicator">reconn: <span id="reconnectCount">0</span></span>
+                    <span class="fault-indicator" id="resyncIndicator">resync: <span id="resyncCount">0</span></span>
+                    <span class="fault-indicator" id="resubIndicator">resub: <span id="resubCount">0</span></span>
+                </div>
+            </div>
+            <div class="fault-log" id="faultLog"></div>
+        </div>
+        
+        <!-- Pair Selector -->
+        <div class="pair-selector">
+            <div class="section-title">subscriptions <span class="pair-info">700+ pairs available</span></div>
+            <div class="pair-controls">
+                <select class="pair-select" id="pairSelect" onchange="addPairFromSelect()">
+                    <option value="">+ Add pair...</option>
+                    <optgroup label="Major Crypto">
+                        <option value="BTC/USD">BTC/USD - Bitcoin</option>
+                        <option value="ETH/USD">ETH/USD - Ethereum</option>
+                        <option value="SOL/USD">SOL/USD - Solana</option>
+                        <option value="XRP/USD">XRP/USD - Ripple</option>
+                        <option value="ADA/USD">ADA/USD - Cardano</option>
+                        <option value="DOGE/USD">DOGE/USD - Dogecoin</option>
+                        <option value="DOT/USD">DOT/USD - Polkadot</option>
+                        <option value="AVAX/USD">AVAX/USD - Avalanche</option>
+                        <option value="MATIC/USD">MATIC/USD - Polygon</option>
+                        <option value="LINK/USD">LINK/USD - Chainlink</option>
+                    </optgroup>
+                    <optgroup label="DeFi">
+                        <option value="UNI/USD">UNI/USD - Uniswap</option>
+                        <option value="AAVE/USD">AAVE/USD - Aave</option>
+                        <option value="MKR/USD">MKR/USD - Maker</option>
+                        <option value="CRV/USD">CRV/USD - Curve</option>
+                        <option value="COMP/USD">COMP/USD - Compound</option>
+                    </optgroup>
+                    <optgroup label="Layer 2">
+                        <option value="ARB/USD">ARB/USD - Arbitrum</option>
+                        <option value="OP/USD">OP/USD - Optimism</option>
+                    </optgroup>
+                    <optgroup label="Meme Coins">
+                        <option value="SHIB/USD">SHIB/USD - Shiba Inu</option>
+                        <option value="PEPE/USD">PEPE/USD - Pepe</option>
+                    </optgroup>
+                </select>
+                <button class="btn btn-secondary btn-sm" onclick="clearAllPairs()">Clear All</button>
+            </div>
+            <div class="pair-tags" id="pairTags"></div>
+        </div>
+        
+        <div class="main-content">
+            <div class="market-section">
+                <div class="section-title">stream inspector</div>
+                <div class="market-grid" id="marketGrid"></div>
+            </div>
+            
+            <div class="sidebar">
+                <div class="alerts-section">
+                    <div class="section-title">event triggers <button class="btn btn-secondary btn-sm" style="margin-left: auto;" onclick="showAddAlertModal()">+ add</button></div>
+                    <div id="alertsList"></div>
+                </div>
+                
+                <div class="activity-section">
+                    <div class="section-title">tick events</div>
+                    <div id="activityList"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <span class="sdk-badge">sdk observability console — not a trading app</span>
+            <span>rust + wasm | same sdk powers cli, bots & browser</span>
+            <a href="/api/market-data">api</a>
+            <a href="/api/health">health</a>
+        </div>
+    </div>
+    
+    <script src="static/app.js"></script>
+</body>
+</html>

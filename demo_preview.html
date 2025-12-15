@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kraken WebSocket SDK Demo - Preview</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .status-bar {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(10px);
+        }
+        
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #44ff44;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .market-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .market-card {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .market-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        
+        .market-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .symbol {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        
+        .price {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #4CAF50;
+            text-align: right;
+        }
+        
+        .price.updating {
+            animation: priceUpdate 1s ease-out;
+        }
+        
+        @keyframes priceUpdate {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); background: rgba(76, 175, 80, 0.2); }
+            100% { transform: scale(1); }
+        }
+        
+        .market-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .detail-item {
+            background: rgba(0,0,0,0.2);
+            padding: 10px;
+            border-radius: 8px;
+        }
+        
+        .detail-label {
+            font-size: 0.8rem;
+            opacity: 0.7;
+            margin-bottom: 5px;
+        }
+        
+        .detail-value {
+            font-size: 1rem;
+            font-weight: bold;
+        }
+        
+        .trade-info {
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+        }
+        
+        .trade-header {
+            font-size: 0.9rem;
+            opacity: 0.8;
+            margin-bottom: 8px;
+        }
+        
+        .trade-details {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .trade-side {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        
+        .trade-side.buy {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .trade-side.sell {
+            background: #f44336;
+            color: white;
+        }
+        
+        .controls {
+            text-align: center;
+            margin-top: 30px;
+        }
+        
+        .btn {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin: 0 10px;
+            transition: background 0.3s ease;
+        }
+        
+        .btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        .setup-instructions {
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .setup-instructions h3 {
+            color: #4CAF50;
+            margin-bottom: 15px;
+        }
+        
+        .setup-instructions code {
+            background: rgba(0,0,0,0.3);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .setup-instructions pre {
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            overflow-x: auto;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding: 20px;
+            border-top: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .footer p {
+            opacity: 0.7;
+            margin-bottom: 10px;
+        }
+        
+        .footer a {
+            color: #4CAF50;
+            text-decoration: none;
+        }
+        
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .market-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .status-bar {
+                flex-direction: column;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🦑 Kraken WebSocket SDK Demo</h1>
+            <p>Real-time cryptocurrency market data powered by Rust WebSocket SDK</p>
+        </div>
+        
+        <div class="setup-instructions">
+            <h3>🚀 How to Run the Live Demo</h3>
+            <p>This is a preview of the web demo. To run the actual live demo with real-time data:</p>
+            
+            <p><strong>1. Install Rust (if not already installed):</strong></p>
+            <pre>curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh</pre>
+            
+            <p><strong>2. Navigate to the project directory and run:</strong></p>
+            <pre>cd examples/web_demo && cargo run</pre>
+            
+            <p><strong>3. Open your browser to:</strong></p>
+            <pre>http://localhost:3030</pre>
+            
+            <p>The live demo includes real-time WebSocket connections, animated price updates, and interactive controls!</p>
+        </div>
+        
+        <div class="status-bar">
+            <div class="connection-status">
+                <div class="status-indicator"></div>
+                <span>Demo Preview Mode (Static)</span>
+            </div>
+            <div>
+                <span>Last Update: <span id="lastUpdate">Static Preview</span></span>
+            </div>
+        </div>
+        
+        <div class="market-grid">
+            <!-- BTC/USD Card -->
+            <div class="market-card">
+                <div class="market-header">
+                    <div class="symbol">BTC/USD</div>
+                    <div class="connection-status">
+                        <span class="status-text">Preview Mode</span>
+                    </div>
+                </div>
+                
+                <div class="price" onclick="simulateUpdate(this)">$45,234.56</div>
+                
+                <div class="market-details">
+                    <div class="detail-item">
+                        <div class="detail-label">Bid</div>
+                        <div class="detail-value">$45,230.12</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Ask</div>
+                        <div class="detail-value">$45,238.89</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Volume</div>
+                        <div class="detail-value">1,234.56</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Spread</div>
+                        <div class="detail-value">$8.77</div>
+                    </div>
+                </div>
+                
+                <div class="trade-info">
+                    <div class="trade-header">Latest Trade</div>
+                    <div class="trade-details">
+                        <div>
+                            <span class="trade-side buy">BUY</span>
+                            0.5 @ $45,234.56
+                        </div>
+                        <div class="trade-time">
+                            2:30:45 PM
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- ETH/USD Card -->
+            <div class="market-card">
+                <div class="market-header">
+                    <div class="symbol">ETH/USD</div>
+                    <div class="connection-status">
+                        <span class="status-text">Preview Mode</span>
+                    </div>
+                </div>
+                
+                <div class="price" onclick="simulateUpdate(this)">$3,456.78</div>
+                
+                <div class="market-details">
+                    <div class="detail-item">
+                        <div class="detail-label">Bid</div>
+                        <div class="detail-value">$3,454.32</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Ask</div>
+                        <div class="detail-value">$3,459.21</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Volume</div>
+                        <div class="detail-value">5,678.90</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Spread</div>
+                        <div class="detail-value">$4.89</div>
+                    </div>
+                </div>
+                
+                <div class="trade-info">
+                    <div class="trade-header">Latest Trade</div>
+                    <div class="trade-details">
+                        <div>
+                            <span class="trade-side sell">SELL</span>
+                            2.3 @ $3,456.78
+                        </div>
+                        <div class="trade-time">
+                            2:30:42 PM
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- ADA/USD Card -->
+            <div class="market-card">
+                <div class="market-header">
+                    <div class="symbol">ADA/USD</div>
+                    <div class="connection-status">
+                        <span class="status-text">Preview Mode</span>
+                    </div>
+                </div>
+                
+                <div class="price" onclick="simulateUpdate(this)">$0.4567</div>
+                
+                <div class="market-details">
+                    <div class="detail-item">
+                        <div class="detail-label">Bid</div>
+                        <div class="detail-value">$0.4565</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Ask</div>
+                        <div class="detail-value">$0.4569</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Volume</div>
+                        <div class="detail-value">12.3K</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Spread</div>
+                        <div class="detail-value">$0.0004</div>
+                    </div>
+                </div>
+                
+                <div class="trade-info">
+                    <div class="trade-header">Latest Trade</div>
+                    <div class="trade-details">
+                        <div>
+                            <span class="trade-side buy">BUY</span>
+                            100.0 @ $0.4567
+                        </div>
+                        <div class="trade-time">
+                            2:30:38 PM
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn" onclick="alert('In the live demo, this would reconnect the WebSocket!')">🔄 Reconnect</button>
+            <button class="btn" onclick="alert('In the live demo, this would clear all market data!')">🗑️ Clear Data</button>
+            <button class="btn" onclick="alert('In the live demo, this would pause real-time updates!')">⏸️ Pause Updates</button>
+        </div>
+        
+        <div class="footer">
+            <p>This is a static preview of the Kraken WebSocket SDK web demo</p>
+            <p>
+                <strong>To run the live demo with real-time data:</strong><br>
+                Install Rust, then run: <code>cd examples/web_demo && cargo run</code>
+            </p>
+            <p>
+                📚 <a href="README.md">View Documentation</a> |
+                🦑 <a href="examples/web_demo/README.md">Web Demo Guide</a> |
+                🚀 <a href="IMPROVEMENTS_SUMMARY.md">See All Features</a>
+            </p>
+        </div>
+    </div>
+    
+    <script>
+        function simulateUpdate(priceElement) {
+            // Simulate a price update animation
+            priceElement.classList.add('updating');
+            
+            // Generate a random price change
+            const currentPrice = parseFloat(priceElement.textContent.replace(/[$,]/g, ''));
+            const change = (Math.random() - 0.5) * currentPrice * 0.02; // ±1% change
+            const newPrice = currentPrice + change;
+            
+            // Format the new price
+            let formattedPrice;
+            if (newPrice >= 1000) {
+                formattedPrice = '$' + newPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            } else if (newPrice >= 1) {
+                formattedPrice = '$' + newPrice.toFixed(4);
+            } else {
+                formattedPrice = '$' + newPrice.toFixed(6);
+            }
+            
+            priceElement.textContent = formattedPrice;
+            
+            // Remove animation class after animation completes
+            setTimeout(() => {
+                priceElement.classList.remove('updating');
+            }, 1000);
+        }
+        
+        // Auto-update prices every 3 seconds for demo effect
+        setInterval(() => {
+            const prices = document.querySelectorAll('.price');
+            const randomPrice = prices[Math.floor(Math.random() * prices.length)];
+            simulateUpdate(randomPrice);
+        }, 3000);
+        
+        // Update last update time
+        setInterval(() => {
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+        }, 1000);
+    </script>
+</body>
+</html>

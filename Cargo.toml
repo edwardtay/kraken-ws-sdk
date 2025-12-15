@@ -1,0 +1,105 @@
+[package]
+name = "kraken-ws-sdk"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.70"
+description = "A high-performance, production-grade SDK for Kraken's WebSocket API with backpressure control, latency tracking, and chaos engineering support"
+license = "MIT"
+keywords = ["kraken", "websocket", "cryptocurrency", "trading", "sdk"]
+categories = ["api-bindings", "asynchronous", "web-programming::websocket"]
+repository = "https://github.com/example/kraken-ws-sdk"
+documentation = "https://docs.rs/kraken-ws-sdk"
+readme = "README.md"
+authors = ["Kraken WS SDK Contributors"]
+
+[features]
+default = ["native"]
+native = ["tokio-tungstenite/native-tls"]
+wasm = ["wasm-bindgen", "js-sys", "web-sys"]
+chaos = []  # Enable chaos/fault injection features
+metrics = []  # Enable Prometheus-style metrics export
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
+tokio-tungstenite = { version = "0.20", features = ["native-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+chrono = { version = "0.4", features = ["serde"] }
+rust_decimal = { version = "1.0", features = ["serde"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+rand = "0.8"
+thiserror = "1.0"
+anyhow = "1.0"
+futures-util = "0.3"
+url = "2.0"
+base64 = "0.21"
+dotenvy = "0.15"
+async-trait = "0.1"
+
+# WASM dependencies (optional)
+wasm-bindgen = { version = "0.2", optional = true }
+js-sys = { version = "0.3", optional = true }
+web-sys = { version = "0.3", optional = true }
+
+[dev-dependencies]
+quickcheck = "1.0"
+quickcheck_macros = "1.0"
+tokio-test = "0.4"
+dotenvy = "0.15"
+criterion = { version = "0.5", features = ["html_reports"] }
+serde_json = "1.0"
+
+[[bench]]
+name = "performance_benchmarks"
+harness = false
+
+[[example]]
+name = "basic_usage"
+path = "examples/basic_usage.rs"
+
+[[example]]
+name = "advanced_usage"
+path = "examples/advanced_usage.rs"
+
+[[example]]
+name = "kraken_live_test"
+path = "examples/kraken_live_test.rs"
+
+[[example]]
+name = "sdk_demo"
+path = "examples/sdk_demo.rs"
+
+[[example]]
+name = "test_direct_kraken"
+path = "examples/test_direct_kraken.rs"
+
+[[example]]
+name = "sequencing_demo"
+path = "examples/sequencing_demo.rs"
+
+[[example]]
+name = "backpressure_demo"
+path = "examples/backpressure_demo.rs"
+
+[[example]]
+name = "latency_demo"
+path = "examples/latency_demo.rs"
+
+[[example]]
+name = "exchange_demo"
+path = "examples/exchange_demo.rs"
+
+[workspace]
+members = [
+    ".",
+    "examples/web_demo"
+]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
