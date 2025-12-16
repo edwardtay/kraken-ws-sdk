@@ -510,14 +510,27 @@ Expected: seq 100 → Received: seq 105
 - `GapPolicy::Ignore` - Continue processing, accept data loss
 - `GapPolicy::Buffer` - Buffer messages, attempt reorder within window
 
+### Kraken WebSocket Version
+
+This SDK targets **Kraken WebSocket API v2** (public channels):
+
+| Endpoint | URL | Auth Required |
+|----------|-----|---------------|
+| Public | `wss://ws.kraken.com` | No |
+| Private | `wss://ws-auth.kraken.com` | Yes |
+
+**Reference:** [Kraken WebSocket API Documentation](https://docs.kraken.com/websockets/)
+
 ### Order Book Stitching Rules
 
 The SDK maintains order book state with these invariants:
 
 1. **Snapshot first**: Always wait for snapshot before applying deltas
-2. **Checksum validation**: Verify CRC32 checksum after each update (Kraken provides this)
+2. **Checksum validation**: CRC32 checksum verified after each update when provided by Kraken
 3. **Sequence ordering**: Deltas must be applied in sequence order
 4. **Stale detection**: Discard deltas older than current snapshot sequence
+
+**Checksum status:** The SDK validates checksums when Kraken provides them in book updates. If checksum fails, the book is marked invalid and a resync is triggered.
 
 ```
 State Machine:
@@ -663,9 +676,9 @@ kraken-ws-sdk = { version = "0.2", default-features = false, features = ["wasm"]
 The SDK is designed for high-performance applications:
 
 - **Asynchronous**: All operations are non-blocking
-- **Zero-copy**: Minimal data copying where possible
-- **Efficient parsing**: Optimized JSON parsing
-- **Memory management**: Automatic cleanup and leak prevention
+- **Low-allocation hot path**: Minimizes copying where possible (not zero-copy)
+- **Efficient parsing**: Optimized JSON parsing with serde
+- **Bounded queues**: Explicit cleanup on shutdown, configurable buffer limits
 - **Concurrent processing**: Multiple callbacks can process data simultaneously
 
 ## Testing
