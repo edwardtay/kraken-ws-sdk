@@ -378,14 +378,6 @@ cargo run --example latency_demo
 | `latency_demo.rs` | Latency tracking, percentiles |
 | `sequencing_demo.rs` | Gap detection, resync handling |
 
-### Demo Applications
-
-For interactive demos (not production code), see the [`demo/`](demo/) folder:
-- `demo/web_demo/` - Web-based SDK observability console
-- `demo/orderbook-visualizer/` - React orderbook visualization
-
-> ⚠️ **Demo apps are for learning only** - no auth keys, no production claims.
-
 ## Connection State Machine
 
 The SDK uses a **deterministic state machine** for connection management. Each state has explicit transitions with single causes and actions.
@@ -640,19 +632,19 @@ BackpressureConfig {
 ```toml
 [dependencies]
 # Minimal - public market data only
-kraken-ws-sdk = "0.1"
+kraken-ws-sdk = "0.2"
 
 # With private channels (requires API key)
-kraken-ws-sdk = { version = "0.1", features = ["private"] }
+kraken-ws-sdk = { version = "0.2", features = ["private"] }
 
 # Full orderbook state management
-kraken-ws-sdk = { version = "0.1", features = ["orderbook-state"] }
+kraken-ws-sdk = { version = "0.2", features = ["orderbook-state"] }
 
 # Everything
-kraken-ws-sdk = { version = "0.1", features = ["full"] }
+kraken-ws-sdk = { version = "0.2", features = ["full"] }
 
 # WebAssembly target
-kraken-ws-sdk = { version = "0.1", default-features = false, features = ["wasm"] }
+kraken-ws-sdk = { version = "0.2", default-features = false, features = ["wasm"] }
 ```
 
 | Feature | Description | Dependencies Added |
