@@ -731,6 +731,24 @@ If you discover a security vulnerability, please:
 
 ---
 
+## Versioning & Compatibility
+
+This SDK follows [Semantic Versioning](https://semver.org/) with a strong compatibility promise:
+
+**Post-1.0 Guarantee:**
+- No breaking changes in `prelude` module without major version bump
+- Config additions are non-breaking (new fields have defaults)
+- New enum variants are non-breaking (`#[non_exhaustive]`)
+- MSRV bumps require major version
+
+**Pre-1.0 (current):**
+- Minor versions may include breaking changes (documented with `BREAKING:`)
+- Patch versions are always safe to upgrade
+
+See [CHANGELOG.md](CHANGELOG.md) for detailed upgrade notes.
+
+---
+
 ## Disclaimer
 
 This SDK is not officially affiliated with Kraken. Use at your own risk in production environments.
@@ -742,6 +760,7 @@ For questions and support:
 - Check the [examples](examples/) directory
 - Review the API documentation: `cargo doc --open`
 - Open an issue on GitHub
+- See [CHANGELOG.md](CHANGELOG.md) for version history
 
 ---
 
