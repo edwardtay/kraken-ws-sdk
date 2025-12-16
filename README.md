@@ -310,15 +310,16 @@ Then open your browser to: **http://localhost:3032**
 
 ### 🌐 Web Demo Features
 
-The web demo provides a **beautiful, interactive dashboard** showcasing:
+The web demo connects to **live Kraken WebSocket API** - no mocks, no simulations, real market data:
 
-- **📊 Real-time Market Data** - Live cryptocurrency prices with animations
-- **🔌 WebSocket Integration** - Demonstrates SDK's real-time capabilities  
+- **📊 Live Market Data** - Real-time prices from Kraken's production WebSocket feed
+- **🔌 Direct WebSocket** - Connects to `wss://ws.kraken.com` for live ticker/trade streams
+- **📈 SDK Observability** - Health monitoring, latency tracking, sequence gap detection
+- **🎛️ Dynamic Subscriptions** - Add/remove pairs on the fly (max 5)
+- **🔄 Auto Reconnection** - Demonstrates SDK's connection resilience
 - **📱 Responsive Design** - Works on desktop, tablet, and mobile
-- **🔄 Auto Reconnection** - Shows SDK's connection resilience
-- **📡 REST API** - Additional API endpoints for data access
 
-![Web Demo Screenshot](examples/web_demo/screenshot.png)
+Default pairs: **BTC/USD, ETH/USD, SOL/USD**
 
 ## Correctness Contract
 
