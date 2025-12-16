@@ -4,19 +4,89 @@
 //! and processing real-time market data streams.
 //!
 //! ## Features
-//! - `wasm` - Enable WebAssembly support (mutually exclusive with native tokio runtime)
-//! - `chaos` - Enable chaos/fault injection features
-//! - `metrics` - Enable Prometheus-style metrics export
+//!
+//! | Feature | Description |
+//! |---------|-------------|
+//! | `public` (default) | Public market data (ticker, trades, book) |
+//! | `private` | Authenticated channels (ownTrades, openOrders) |
+//! | `orderbook-state` | Full orderbook state management |
+//! | `metrics` | Prometheus-style metrics export |
+//! | `wasm` | WebAssembly support (browser) |
+//! | `chaos` | Fault injection for testing |
 //!
 //! ## Quick Start
-//! ```rust,ignore
+//!
+//! ```rust
 //! use kraken_ws_sdk::prelude::*;
 //!
-//! let sdk = KrakenSDK::default();
-//! sdk.subscribe_ticker("BTC/USD", |t| println!("${}", t.last_price))
-//!    .subscribe_orderbook("ETH/USD", 10, |b| println!("{} bids", b.bids.len()))
-//!    .on_reconnect(|n| println!("Reconnect #{}", n));
+//! // Create a channel subscription
+//! let channel = Channel::new("ticker").with_symbol("BTC/USD");
+//! assert_eq!(channel.name, "ticker");
+//! assert_eq!(channel.symbol, Some("BTC/USD".to_string()));
 //! ```
+//!
+//! ## Configuration
+//!
+//! ```rust
+//! use kraken_ws_sdk::prelude::*;
+//! use std::time::Duration;
+//!
+//! // Default configuration
+//! let config = ClientConfig::default();
+//! assert_eq!(config.endpoint, "wss://ws.kraken.com");
+//!
+//! // Custom configuration
+//! let config = ClientConfig {
+//!     endpoint: "wss://ws.kraken.com".to_string(),
+//!     timeout: Duration::from_secs(30),
+//!     buffer_size: 1024,
+//!     ..Default::default()
+//! };
+//! ```
+//!
+//! ## Backpressure Control
+//!
+//! ```rust
+//! use kraken_ws_sdk::backpressure::{BackpressureConfig, DropPolicy};
+//!
+//! let config = BackpressureConfig {
+//!     max_messages_per_second: 1000,
+//!     max_buffer_size: 500,
+//!     drop_policy: DropPolicy::Oldest,
+//!     ..Default::default()
+//! };
+//!
+//! assert_eq!(config.max_messages_per_second, 1000);
+//! ```
+//!
+//! ## Latency Tracking
+//!
+//! ```rust
+//! use kraken_ws_sdk::latency::format_latency;
+//!
+//! // Format latency values for display
+//! let fast = format_latency(50.0);
+//! assert!(fast.contains("ms") || fast.contains("µs"));
+//!
+//! let slow = format_latency(1500.0);
+//! assert!(slow.contains("s"));
+//! ```
+//!
+//! ## Security
+//!
+//! **Important:** Never log or expose API credentials.
+//!
+//! ```rust
+//! // ✅ Load credentials from environment
+//! let api_key = std::env::var("KRAKEN_API_KEY").ok();
+//! let api_secret = std::env::var("KRAKEN_API_SECRET").ok();
+//!
+//! // The SDK automatically redacts credentials in logs
+//! ```
+//!
+//! ## MSRV
+//!
+//! Minimum Supported Rust Version: **1.70**
 
 // Compile-time check: wasm feature uses different runtime, not compatible with native tokio
 #[cfg(all(feature = "wasm", not(target_arch = "wasm32")))]

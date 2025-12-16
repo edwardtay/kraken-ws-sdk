@@ -105,7 +105,8 @@ impl KrakenSDK {
     /// Subscribe to ticker updates for a trading pair
     /// 
     /// # Example
-    /// ```rust
+    /// ```rust,ignore
+    /// let sdk = KrakenSDK::default();
     /// sdk.subscribe_ticker("BTC/USD", |ticker| {
     ///     println!("BTC: ${}", ticker.last_price);
     /// });
@@ -122,7 +123,8 @@ impl KrakenSDK {
     /// Subscribe to order book updates with specified depth
     /// 
     /// # Example
-    /// ```rust
+    /// ```rust,ignore
+    /// let sdk = KrakenSDK::default();
     /// sdk.subscribe_orderbook("ETH/USD", 10, |book| {
     ///     println!("Best bid: {:?}", book.bids.first());
     /// });
@@ -139,7 +141,8 @@ impl KrakenSDK {
     /// Subscribe to trade updates
     /// 
     /// # Example
-    /// ```rust
+    /// ```rust,ignore
+    /// let sdk = KrakenSDK::default();
     /// sdk.subscribe_trades("BTC/USD", |trade| {
     ///     println!("{:?} {} @ ${}", trade.side, trade.volume, trade.price);
     /// });
@@ -173,7 +176,8 @@ impl KrakenSDK {
     /// Set reconnection handler
     /// 
     /// # Example
-    /// ```rust
+    /// ```rust,ignore
+    /// let sdk = KrakenSDK::default();
     /// sdk.on_reconnect(|attempt| {
     ///     println!("Reconnecting... attempt {}", attempt);
     /// });

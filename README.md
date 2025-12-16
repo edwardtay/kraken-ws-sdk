@@ -397,7 +397,7 @@ Disconnected → Snapshot Received → Applying Deltas → Checksum Valid ✓
 BackpressureConfig {
     max_messages_per_second: 1000,  // Rate limit
     max_queue_depth: 500,           // Buffer before dropping
-    drop_policy: DropPolicy::DropOldest,  // What to drop
+    drop_policy: DropPolicy::Oldest,  // What to drop
     coalesce_window_ms: 10,         // Merge window for same-symbol updates
 }
 ```
@@ -405,8 +405,8 @@ BackpressureConfig {
 **Drop Policies:**
 | Policy | Behavior | Best For |
 |--------|----------|----------|
-| `DropOldest` | Remove oldest queued message | Real-time displays |
-| `DropNewest` | Reject incoming message | Audit/logging |
+| `Oldest` | Remove oldest queued message | Real-time displays |
+| `Latest` | Reject incoming message | Audit/logging |
 | `Coalesce` | Merge updates for same symbol | High-frequency tickers |
 
 **Dropped vs Coalesced:**
@@ -424,7 +424,7 @@ ClientConfig {
 }
 BackpressureConfig {
     max_messages_per_second: 0,  // No limit
-    drop_policy: DropPolicy::DropOldest,
+    drop_policy: DropPolicy::Oldest,
     ..Default::default()
 }
 ```
@@ -520,6 +520,57 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Security
+
+### Credential Handling
+
+**DO NOT:**
+- Log API keys or secrets (SDK redacts these automatically)
+- Commit `.env` files (use `.env.example` as template)
+- Pass credentials in URLs or query strings
+- Store credentials in code or version control
+
+**DO:**
+- Use environment variables for credentials
+- Use `.env` files locally (gitignored)
+- Use secret managers in production (AWS Secrets Manager, Vault, etc.)
+
+```rust
+// ✅ GOOD: Load from environment
+let api_key = std::env::var("KRAKEN_API_KEY").ok();
+let api_secret = std::env::var("KRAKEN_API_SECRET").ok();
+
+// ❌ BAD: Hardcoded credentials
+let api_key = Some("abc123".to_string()); // NEVER DO THIS
+```
+
+### What the SDK Logs
+
+| Data | Logged? | Notes |
+|------|---------|-------|
+| API Key | ❌ Never | Redacted to `***` |
+| API Secret | ❌ Never | Never appears in logs |
+| Auth tokens | ❌ Never | Generated internally, not logged |
+| Symbols/pairs | ✅ Yes | e.g., "BTC/USD" |
+| Prices/volumes | ✅ Yes | Market data is public |
+| Connection state | ✅ Yes | "Connected", "Reconnecting" |
+| Error messages | ✅ Yes | Without sensitive data |
+
+### Network Security
+
+- All connections use **TLS 1.2+** (wss://)
+- Certificate validation is enabled by default
+- No plaintext WebSocket (ws://) in production
+
+### Reporting Vulnerabilities
+
+If you discover a security vulnerability, please:
+1. **Do not** open a public issue
+2. Email security concerns to the maintainers
+3. Allow 90 days for a fix before public disclosure
+
+---
 
 ## Disclaimer
 
