@@ -1097,13 +1097,22 @@ function toggleUpdates() {
 
 const pairManager = {
     activePairs: new Set(['BTC/USD', 'ETH/USD', 'ADA/USD']),
+    maxPairs: 5,
     
     addPair(pair) {
         if (!pair || this.activePairs.has(pair)) return;
+        if (this.activePairs.size >= this.maxPairs) {
+            addFaultLog(`[${new Date().toLocaleTimeString()}] ⚠️ Max ${this.maxPairs} pairs - remove one to add more`, 'warn');
+            alert(`Max ${this.maxPairs} pairs reached. Remove a pair first to add a new one.`);
+            return;
+        }
         this.activePairs.add(pair);
         this.render();
         sdkAlerts.addStateEvent('pair_add', pair);
-        // Note: In real implementation, this would send subscription to backend
+        // Send subscription request to backend
+        if (window.krakenDemo && window.krakenDemo.ws && window.krakenDemo.ws.readyState === WebSocket.OPEN) {
+            window.krakenDemo.ws.send(JSON.stringify({ type: 'subscribe', symbol: pair }));
+        }
         console.log(`📡 Subscribed to ${pair}`);
     },
     
@@ -1111,7 +1120,10 @@ const pairManager = {
         this.activePairs.delete(pair);
         this.render();
         sdkAlerts.addStateEvent('pair_remove', pair);
-        // Remove market card
+        // Send unsubscribe request to backend
+        if (window.krakenDemo && window.krakenDemo.ws && window.krakenDemo.ws.readyState === WebSocket.OPEN) {
+            window.krakenDemo.ws.send(JSON.stringify({ type: 'unsubscribe', symbol: pair }));
+        }
         const card = document.getElementById(`card-${pair.replace('/', '-')}`);
         if (card) card.remove();
         if (window.krakenDemo) {
@@ -1124,6 +1136,12 @@ const pairManager = {
     render() {
         const container = document.getElementById('pairTags');
         if (!container) return;
+        
+        const countEl = document.getElementById('pairCount');
+        if (countEl) {
+            countEl.textContent = `${this.activePairs.size}/${this.maxPairs}`;
+            countEl.style.color = this.activePairs.size >= this.maxPairs ? 'var(--accent-orange)' : 'var(--text-secondary)';
+        }
         
         container.innerHTML = Array.from(this.activePairs).map(pair => `
             <span class="pair-tag active">

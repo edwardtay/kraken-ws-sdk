@@ -180,6 +180,14 @@ async fn websocket_handler(
     Ok(ws.on_upgrade(move |socket| websocket_connection(socket, state)))
 }
 
+/// Message from frontend to request subscription
+#[derive(Debug, Deserialize)]
+struct ClientMessage {
+    #[serde(rename = "type")]
+    msg_type: String,
+    symbol: Option<String>,
+}
+
 async fn websocket_connection(ws: warp::ws::WebSocket, state: AppState) {
     let (mut ws_tx, mut ws_rx) = ws.split();
     let mut broadcast_rx = state.broadcast_tx.subscribe();
@@ -214,7 +222,44 @@ async fn websocket_connection(ws: warp::ws::WebSocket, state: AppState) {
                 match result {
                     Ok(msg) => {
                         if msg.is_text() {
-                            println!("Received client message: {:?}", msg.to_str());
+                            if let Ok(text) = msg.to_str() {
+                                if let Ok(client_msg) = serde_json::from_str::<ClientMessage>(text) {
+                                    if client_msg.msg_type == "subscribe" {
+                                        if let Some(symbol) = client_msg.symbol {
+                                            println!("📡 Client requested subscription to: {}", symbol);
+                                            // Initialize market data entry for new symbol
+                                            let mut market_data = state.market_data.lock().unwrap();
+                                            if !market_data.contains_key(&symbol) {
+                                                market_data.insert(symbol.clone(), MarketData {
+                                                    symbol: symbol.clone(),
+                                                    last_price: Some("--".to_string()),
+                                                    bid: Some("--".to_string()),
+                                                    ask: Some("--".to_string()),
+                                                    volume: Some("--".to_string()),
+                                                    spread: Some("--".to_string()),
+                                                    last_trade: None,
+                                                    connection_status: "Subscribing...".to_string(),
+                                                    timestamp: chrono::Utc::now().to_rfc3339(),
+                                                    exchange_timestamp: None,
+                                                    messages_received: 0,
+                                                    messages_dropped: 0,
+                                                    messages_coalesced: 0,
+                                                    current_rate: 0.0,
+                                                });
+                                                // Broadcast the new entry immediately
+                                                let entry = market_data.get(&symbol).unwrap().clone();
+                                                let _ = state.broadcast_tx.send(entry);
+                                            }
+                                        }
+                                    } else if client_msg.msg_type == "unsubscribe" {
+                                        if let Some(symbol) = client_msg.symbol {
+                                            println!("📡 Client requested unsubscribe from: {}", symbol);
+                                            let mut market_data = state.market_data.lock().unwrap();
+                                            market_data.remove(&symbol);
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                     Err(e) => {

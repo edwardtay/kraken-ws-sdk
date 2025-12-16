@@ -1,7 +1,9 @@
 # Kraken WebSocket SDK
 
+[![Crates.io](https://img.shields.io/crates/v/kraken-ws-sdk.svg)](https://crates.io/crates/kraken-ws-sdk)
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![docs.rs](https://docs.rs/kraken-ws-sdk/badge.svg)](https://docs.rs/kraken-ws-sdk)
 
 A lightweight, high-performance Rust SDK for connecting to Kraken's WebSocket API and processing real-time market data streams.
 
@@ -304,7 +306,7 @@ cargo run --example advanced_usage
 cd examples/web_demo && cargo run
 ```
 
-Then open your browser to: **http://localhost:3030**
+Then open your browser to: **http://localhost:3032**
 
 ### 🌐 Web Demo Features
 
