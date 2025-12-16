@@ -3,4 +3,5 @@
 *.pem
 *.key
 .kiro/
+private/
 !.env.example
