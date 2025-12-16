@@ -2,4 +2,5 @@
 .env
 *.pem
 *.key
+.kiro/
 !.env.example
