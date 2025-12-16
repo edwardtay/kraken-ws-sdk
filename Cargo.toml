@@ -13,10 +13,22 @@ readme = "README.md"
 authors = ["Kraken WS SDK Contributors"]
 
 [features]
-default = []
-wasm = ["wasm-bindgen", "js-sys", "web-sys"]
-chaos = []  # Enable chaos/fault injection features
-metrics = []  # Enable Prometheus-style metrics export
+# Default: public market data only (minimal dependencies)
+default = ["public"]
+
+# Core features
+public = []                    # Public market data (ticker, trades, book, ohlc)
+private = []                   # Private channels (ownTrades, openOrders) - requires auth
+orderbook-state = []           # Full orderbook state management with checksums
+
+# Optional features
+wasm = ["wasm-bindgen", "js-sys", "web-sys"]  # WebAssembly support
+chaos = []                     # Chaos/fault injection for testing
+metrics = []                   # Prometheus-style metrics export
+tracing-full = []              # Full tracing with spans and events
+
+# Feature bundles
+full = ["public", "private", "orderbook-state", "metrics", "tracing-full"]
 
 [dependencies]
 tokio = { version = "1.0", features = ["full"] }

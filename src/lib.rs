@@ -97,19 +97,67 @@ pub use telemetry::{
     Counter, Gauge, Histogram, SdkMetrics, Span,
 };
 
-/// Prelude - import everything you need
+/// Prelude - minimal public API surface
+/// 
+/// Import with: `use kraken_ws_sdk::prelude::*;`
+/// 
+/// This provides the essential types for most use cases:
+/// - `KrakenSDK` - Main entry point
+/// - `ClientConfig` - Configuration builder
+/// - `Channel` - Subscription channel builder
+/// - `Event` - Unified event enum
+/// - Core data types (TickerData, TradeData, etc.)
 pub mod prelude {
-    // Core SDK
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // CORE API (always available)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    /// Main SDK entry point
     pub use crate::sdk::{KrakenSDK, KrakenSDKBuilder};
+    
+    /// Configuration
+    pub use crate::client::ClientConfigBuilder;
+    pub use crate::data::ClientConfig;
+    
+    /// Channel builders
+    pub use crate::data::Channel;
+    
+    /// Core data types
     pub use crate::data::{TickerData, TradeData, OrderBookUpdate, OHLCData, TradeSide};
+    
+    /// Errors
     pub use crate::error::SdkError;
     
-    // Sequencing & Backpressure
-    pub use crate::sequencing::{SequenceManager, SequenceState, GapEvent, ResyncEvent};
-    pub use crate::backpressure::{BackpressureManager, BackpressureConfig, DropPolicy, BackpressureStats};
+    /// Connection state
+    pub use crate::data::ConnectionState;
     
-    // Latency & Metrics
-    pub use crate::latency::{LatencyTracker, LatencyStats, LatencyPercentiles, format_latency};
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // OPTIONAL: Backpressure (for high-throughput)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    pub use crate::backpressure::{BackpressureConfig, DropPolicy};
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // OPTIONAL: Latency tracking
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    pub use crate::latency::{LatencyStats, format_latency};
+}
+
+/// Extended prelude with all features
+/// 
+/// Import with: `use kraken_ws_sdk::prelude_full::*;`
+pub mod prelude_full {
+    pub use crate::prelude::*;
+    
+    // Sequencing
+    pub use crate::sequencing::{SequenceManager, SequenceState, GapEvent, ResyncEvent};
+    
+    // Full backpressure
+    pub use crate::backpressure::{BackpressureManager, BackpressureStats};
+    
+    // Full latency
+    pub use crate::latency::{LatencyTracker, LatencyPercentiles, LatencyHistogram};
+    
+    // Telemetry
     pub use crate::telemetry::{MetricsRegistry, SdkMetrics, TelemetryConfig};
     
     // Exchange abstraction
@@ -119,7 +167,7 @@ pub mod prelude {
     pub use crate::retry::{RetryPolicy, CircuitBreaker, CircuitState};
     
     // Middleware
-    pub use crate::middleware::{Middleware, MiddlewareChain, RequestContext};
+    pub use crate::middleware::{Middleware, MiddlewareChain};
 }
 
 use tracing_subscriber;

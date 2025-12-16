@@ -318,6 +318,181 @@ The web demo provides a **beautiful, interactive dashboard** showcasing:
 
 ![Web Demo Screenshot](examples/web_demo/screenshot.png)
 
+## Correctness Contract
+
+### Reconnection Behavior
+
+| Event | SDK Behavior | User Action Required |
+|-------|--------------|---------------------|
+| Network disconnect | Auto-reconnect with exponential backoff (100ms → 30s) | None |
+| Server close (1000) | Reconnect after `initial_delay` | None |
+| Auth failure | Stop reconnecting, emit error | Re-authenticate |
+| Max attempts reached | Emit `ConnectionState::Failed` | Manual `connect()` |
+
+**On successful reconnect:**
+1. All previous subscriptions are automatically restored
+2. `on_reconnect(attempt_number)` callback fires
+3. Order book state is invalidated (snapshot required)
+
+### Sequence Gap Handling
+
+```
+Expected: seq 100 → Received: seq 105
+         ↓
+    Gap detected (size: 5)
+         ↓
+    on_gap_detected(expected=100, received=105)
+         ↓
+    Resync triggered (request snapshot)
+         ↓
+    on_resync(reason=GapDetected)
+```
+
+**Gap policies:**
+- `GapPolicy::Resync` (default) - Request fresh snapshot on any gap
+- `GapPolicy::Ignore` - Continue processing, accept data loss
+- `GapPolicy::Buffer` - Buffer messages, attempt reorder within window
+
+### Order Book Stitching Rules
+
+1. **Snapshot first**: Always wait for snapshot before applying deltas
+2. **Checksum validation**: Verify CRC32 checksum after each update (if provided)
+3. **Sequence ordering**: Deltas must be applied in sequence order
+4. **Stale detection**: Discard deltas older than current snapshot
+
+```rust
+// Stitching state machine
+Disconnected → Snapshot Received → Applying Deltas → Checksum Valid ✓
+                     ↑                    ↓
+                     └── Checksum Fail ───┘ (request new snapshot)
+```
+
+### Timestamp Guarantees
+
+| Guarantee | Level |
+|-----------|-------|
+| Exchange timestamps | **Monotonic per symbol** (Kraken guarantees) |
+| Receive timestamps | **Best effort** (network jitter possible) |
+| Latency calculation | `receive_time - exchange_time` (clock sync dependent) |
+
+**Note:** For accurate latency, ensure NTP sync on your system.
+
+---
+
+## Tuning Guide
+
+### Buffer Sizes
+
+| Use Case | `buffer_size` | `max_queue_depth` | Notes |
+|----------|---------------|-------------------|-------|
+| Single pair, low freq | 64 | 100 | Minimal memory |
+| Single pair, high freq | 256 | 500 | BTC/USD during volatility |
+| 10 pairs, mixed freq | 512 | 1000 | Typical trading bot |
+| 50+ pairs, all tickers | 2048 | 5000 | Market maker / aggregator |
+| Order book depth 1000 | 4096 | 2000 | Deep book tracking |
+
+### Backpressure Configuration
+
+```rust
+BackpressureConfig {
+    max_messages_per_second: 1000,  // Rate limit
+    max_queue_depth: 500,           // Buffer before dropping
+    drop_policy: DropPolicy::DropOldest,  // What to drop
+    coalesce_window_ms: 10,         // Merge window for same-symbol updates
+}
+```
+
+**Drop Policies:**
+| Policy | Behavior | Best For |
+|--------|----------|----------|
+| `DropOldest` | Remove oldest queued message | Real-time displays |
+| `DropNewest` | Reject incoming message | Audit/logging |
+| `Coalesce` | Merge updates for same symbol | High-frequency tickers |
+
+**Dropped vs Coalesced:**
+- **Dropped**: Message discarded entirely, data loss
+- **Coalesced**: Multiple updates merged into one, no data loss but reduced granularity
+
+### Recommended Defaults
+
+**Low-latency trading (single pair):**
+```rust
+ClientConfig {
+    buffer_size: 128,
+    timeout: Duration::from_millis(5000),
+    ..Default::default()
+}
+BackpressureConfig {
+    max_messages_per_second: 0,  // No limit
+    drop_policy: DropPolicy::DropOldest,
+    ..Default::default()
+}
+```
+
+**Multi-pair monitoring (10-50 pairs):**
+```rust
+ClientConfig {
+    buffer_size: 1024,
+    timeout: Duration::from_secs(30),
+    ..Default::default()
+}
+BackpressureConfig {
+    max_messages_per_second: 5000,
+    coalesce_window_ms: 50,
+    drop_policy: DropPolicy::Coalesce,
+    ..Default::default()
+}
+```
+
+**High-frequency aggregator (100+ pairs):**
+```rust
+ClientConfig {
+    buffer_size: 4096,
+    timeout: Duration::from_secs(60),
+    ..Default::default()
+}
+BackpressureConfig {
+    max_messages_per_second: 10000,
+    max_queue_depth: 10000,
+    coalesce_window_ms: 100,
+    drop_policy: DropPolicy::Coalesce,
+    ..Default::default()
+}
+```
+
+---
+
+## Feature Flags
+
+```toml
+[dependencies]
+# Minimal - public market data only
+kraken-ws-sdk = "0.1"
+
+# With private channels (requires API key)
+kraken-ws-sdk = { version = "0.1", features = ["private"] }
+
+# Full orderbook state management
+kraken-ws-sdk = { version = "0.1", features = ["orderbook-state"] }
+
+# Everything
+kraken-ws-sdk = { version = "0.1", features = ["full"] }
+
+# WebAssembly target
+kraken-ws-sdk = { version = "0.1", default-features = false, features = ["wasm"] }
+```
+
+| Feature | Description | Dependencies Added |
+|---------|-------------|-------------------|
+| `public` (default) | Ticker, trades, book, OHLC | Core only |
+| `private` | ownTrades, openOrders | Auth modules |
+| `orderbook-state` | Full book management | CRC32, state machine |
+| `metrics` | Prometheus export | prometheus crate |
+| `chaos` | Fault injection | None |
+| `wasm` | Browser support | wasm-bindgen |
+
+---
+
 ## Performance
 
 The SDK is designed for high-performance applications:
