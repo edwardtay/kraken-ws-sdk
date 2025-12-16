@@ -5,18 +5,37 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![docs.rs](https://docs.rs/kraken-ws-sdk/badge.svg)](https://docs.rs/kraken-ws-sdk)
 
-A lightweight, high-performance Rust SDK for connecting to Kraken's WebSocket API and processing real-time market data streams.
+A production-grade Rust SDK for Kraken's WebSocket API with a **frozen, minimal API surface** and **deterministic connection state machine**.
+
+## API Stability
+
+This SDK follows a **frozen API** philosophy for production reliability:
+
+| Module | Stability | Description |
+|--------|-----------|-------------|
+| `prelude` | **Stable** | Core API - won't break between minor versions |
+| `extended` | **Stable** | Advanced features - stable but may grow |
+| `internal` | **Unstable** | Implementation details - may change |
+
+```rust
+// ✅ Use this for production code
+use kraken_ws_sdk::prelude::*;
+
+// ✅ For advanced features
+use kraken_ws_sdk::extended::*;
+
+// ❌ Don't depend on internal modules
+// use kraken_ws_sdk::internal::*;
+```
 
 ## Features
 
-- 🚀 **High Performance**: Asynchronous processing with minimal overhead
-- 🔒 **Type Safety**: Leverages Rust's type system for compile-time safety
-- 🔄 **Auto Reconnection**: Intelligent reconnection with exponential backoff
-- 📊 **Real-time Data**: Support for tickers, trades, order books, and OHLC data
-- 🎯 **Event-Driven**: Flexible callback system for handling market data
-- 🛡️ **Error Handling**: Comprehensive error handling and recovery
-- 📈 **Order Book Management**: Built-in order book state management
-- 🔧 **Configurable**: Extensive configuration options for production use
+- 🔒 **Frozen API**: Minimal, stable surface - trading firms hate churn
+- 🎯 **Deterministic State Machine**: Explicit connection states with single-cause transitions
+- 🚀 **High Performance**: Async processing with minimal overhead
+- 📊 **Real-time Data**: Tickers, trades, order books, OHLC
+- 🔄 **Auto Recovery**: Exponential backoff with configurable retry limits
+- 📈 **Order Book Management**: Snapshot + delta stitching with checksum validation
 
 ## Quick Start
 
@@ -352,6 +371,78 @@ The web demo connects to **live Kraken WebSocket API** - no mocks, no simulation
 - **📱 Responsive Design** - Works on desktop, tablet, and mobile
 
 Default pairs: **BTC/USD, ETH/USD, SOL/USD**
+
+## Connection State Machine
+
+The SDK uses a **deterministic state machine** for connection management. Each state has explicit transitions with single causes and actions.
+
+```
+┌─────────────┐                    ┌─────────────┐                    ┌───────────────┐
+│ DISCONNECTED│───── connect() ───▶│  CONNECTING │───── success ─────▶│AUTHENTICATING │
+└─────────────┘                    └─────────────┘                    └───────────────┘
+       ▲                                  │                                   │
+       │                               failure                          success/skip
+       │                                  │                                   │
+       │                                  ▼                                   ▼
+       │                           ┌──────────┐                        ┌─────────────┐
+       │                           │ DEGRADED │◀─── subscription ──────│ SUBSCRIBING │
+       │                           └──────────┘      failed            └─────────────┘
+       │                                  │                                   │
+       │                               retry                              success
+       │                                  │                                   │
+       │                                  ▼                                   ▼
+       │                           ┌──────────┐    gap_detected       ┌────────────┐
+       └────── close() ────────────│  CLOSED  │◀───────────────────────│ SUBSCRIBED │
+                                   └──────────┘                        └────────────┘
+                                        ▲                                    │
+                                        │                              gap_detected
+                                   max_retries                               │
+                                        │                                    ▼
+                                        └──────────────────────────────┌───────────┐
+                                                                       │ RESYNCING │
+                                                                       └───────────┘
+```
+
+### State Descriptions
+
+| State | Description | Exit Conditions |
+|-------|-------------|-----------------|
+| `DISCONNECTED` | Initial state | `connect()` → CONNECTING |
+| `CONNECTING` | Establishing WebSocket | success → AUTHENTICATING, failure → DEGRADED |
+| `AUTHENTICATING` | Sending API credentials | success → SUBSCRIBING, failure → DEGRADED |
+| `SUBSCRIBING` | Sending subscription requests | all confirmed → SUBSCRIBED, failure → DEGRADED |
+| `SUBSCRIBED` | Receiving data normally | gap → RESYNCING, disconnect → DEGRADED, `close()` → CLOSED |
+| `RESYNCING` | Recovering from sequence gap | complete → SUBSCRIBED, failure → DEGRADED |
+| `DEGRADED` | Attempting recovery | retry → CONNECTING, max_retries → CLOSED |
+| `CLOSED` | Terminal state | `connect()` starts new connection |
+
+### State Events
+
+Every state transition emits an `Event::StateChange(ConnectionState)`:
+
+```rust
+use kraken_ws_sdk::prelude::*;
+
+let mut events = client.events();
+while let Some(event) = events.recv().await {
+    match event {
+        Event::StateChange(state) => {
+            match state {
+                ConnectionState::Subscribed => println!("✅ Ready to receive data"),
+                ConnectionState::Degraded { reason, retry_count, .. } => {
+                    println!("⚠️ Degraded: {:?}, retry #{}", reason, retry_count);
+                }
+                ConnectionState::Closed { reason } => {
+                    println!("❌ Closed: {:?}", reason);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        _ => {}
+    }
+}
+```
 
 ## Correctness Guarantees
 
