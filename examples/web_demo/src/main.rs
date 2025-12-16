@@ -305,7 +305,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize some demo data
     {
         let mut market_data = state.market_data.lock().unwrap();
-        for symbol in &["BTC/USD", "ETH/USD", "ADA/USD"] {
+        for symbol in &["BTC/USD", "ETH/USD", "SOL/USD"] {
             market_data.insert(symbol.to_string(), MarketData {
                 symbol: symbol.to_string(),
                 last_price: Some("0.00".to_string()),
@@ -351,7 +351,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let channels = vec![
             Channel::new("ticker").with_symbol("BTC/USD"),   // BTC/USD 
             Channel::new("ticker").with_symbol("ETH/USD"),   // ETH/USD
-            Channel::new("ticker").with_symbol("ADA/USD"),   // ADA/USD
+            Channel::new("ticker").with_symbol("SOL/USD"),   // SOL/USD
             Channel::new("trade").with_symbol("BTC/USD"),    // BTC trades
         ];
         
@@ -440,7 +440,7 @@ async fn simulate_market_data(state: AppState) {
     use rust_decimal::Decimal;
     use std::str::FromStr;
     
-    let symbols = vec!["BTC/USD", "ETH/USD", "ADA/USD"];
+    let symbols = vec!["BTC/USD", "ETH/USD", "SOL/USD"];
     let mut prices = HashMap::new();
     
     // Initialize prices

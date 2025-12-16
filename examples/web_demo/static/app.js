@@ -1096,7 +1096,7 @@ function toggleUpdates() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 const pairManager = {
-    activePairs: new Set(['BTC/USD', 'ETH/USD', 'ADA/USD']),
+    activePairs: new Set(['BTC/USD', 'ETH/USD', 'SOL/USD']),
     maxPairs: 5,
     
     addPair(pair) {
