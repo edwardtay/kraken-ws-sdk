@@ -5,7 +5,33 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![docs.rs](https://docs.rs/kraken-ws-sdk/badge.svg)](https://docs.rs/kraken-ws-sdk)
 
-A production-grade Rust SDK for Kraken's WebSocket API with a **frozen, minimal API surface** and **deterministic connection state machine**.
+A production-grade, correctness-first Kraken WebSocket SDK in Rust, designed for reliable market data ingestion and long-running trading systems.
+
+## Who This Is For
+
+- **Production market data ingestion** - reliable, 24/7 data pipelines
+- **Research and strategy development** - backtesting, signal generation
+- **Trading system infrastructure** - not a full trading engine, but the data layer for one
+
+## What Is Stable Today
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Public market data | ✅ **Stable** | Ticker, trades, orderbook, OHLC |
+| Reconnect semantics | ✅ **Stable** | Deterministic state machine, auto-resubscribe |
+| Orderbook stitching | ✅ **Stable** | Snapshot + delta, checksum validation |
+| `prelude` module | ✅ **Stable** | Won't break in minor versions |
+
+## What Is NOT Frozen Yet
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Auth channels | ⚠️ **Unstable** | `ownTrades`, `openOrders` - API may change |
+| Config surface | ⚠️ **Unstable** | New fields may be added (with defaults) |
+| Metrics shape | ⚠️ **Unstable** | Prometheus export format may evolve |
+| `extended` module | ⚠️ **Growing** | Stable but new types may be added |
+
+---
 
 ## API Stability
 
@@ -43,7 +69,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-kraken-ws-sdk = "0.1.0"
+kraken-ws-sdk = "0.2"
 tokio = { version = "1.0", features = ["full"] }
 ```
 
