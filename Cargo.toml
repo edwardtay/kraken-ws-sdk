@@ -1,6 +1,6 @@
 [package]
 name = "kraken-ws-sdk"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.70"
 description = "A high-performance, production-grade SDK for Kraken's WebSocket API with backpressure control, latency tracking, and chaos engineering support"
