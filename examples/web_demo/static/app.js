@@ -1,5 +1,15 @@
 // Kraken WebSocket SDK Demo - Enhanced Frontend
 
+// Connection reason constants (must be defined before use)
+const connectionReasons = {
+    SERVER_CLOSE: 'server close',
+    TIMEOUT: 'timeout',
+    CLIENT_FORCED: 'client forced',
+    NETWORK: 'network error',
+    FAULT_INJECTION: 'fault injection',
+    UNKNOWN: 'unknown'
+};
+
 class KrakenDemo {
     constructor() {
         this.ws = null;
@@ -46,8 +56,13 @@ class KrakenDemo {
                 console.log('WebSocket connected');
                 this.isConnected = true;
                 this.reconnectAttempts = 0;
+                this.lastDisconnectReason = null;
                 this.updateConnectionStatus('Connected', true);
                 sdkState.updateConnection('CONNECTED');
+                if (typeof healthMonitor !== 'undefined') {
+                    healthMonitor.updateConnection(true);
+                    healthMonitor.resetSnapshotConsistency();
+                }
             };
             
             this.ws.onmessage = (event) => {
@@ -58,17 +73,40 @@ class KrakenDemo {
                 }
             };
             
-            this.ws.onclose = () => {
-                console.log('WebSocket disconnected');
+            this.ws.onclose = (event) => {
+                console.log('WebSocket disconnected', event.code, event.reason);
                 this.isConnected = false;
+                
+                // Determine disconnect reason
+                let reason = connectionReasons.UNKNOWN;
+                if (this.lastDisconnectReason === 'fault') {
+                    reason = connectionReasons.FAULT_INJECTION;
+                } else if (event.code === 1000) {
+                    reason = connectionReasons.SERVER_CLOSE;
+                } else if (event.code === 1006) {
+                    reason = connectionReasons.NETWORK;
+                } else if (event.code === 1001) {
+                    reason = connectionReasons.CLIENT_FORCED;
+                }
+                
+                if (typeof logDisconnect !== 'undefined') {
+                    logDisconnect(reason, event.code);
+                }
+                
                 this.updateConnectionStatus('Disconnected', false);
                 sdkState.updateConnection('DISCONNECTED');
-                this.scheduleReconnect();
+                if (typeof healthMonitor !== 'undefined') {
+                    healthMonitor.updateConnection(false);
+                }
+                this.scheduleReconnect(reason);
             };
             
             this.ws.onerror = (error) => {
                 console.error('WebSocket error:', error);
                 this.updateConnectionStatus('Error', false);
+                if (typeof healthMonitor !== 'undefined') {
+                    healthMonitor.updateConnection(false);
+                }
             };
             
         } catch (error) {
@@ -83,6 +121,21 @@ class KrakenDemo {
             
             // Record raw frame for inspector
             frameInspector.addFrame(data, marketData);
+            
+            // Record for replay if recording
+            if (typeof recorder !== 'undefined') {
+                recorder.addFrame(data, marketData);
+            }
+            
+            // Health monitoring - check sequence and lag
+            if (typeof healthMonitor !== 'undefined') {
+                if (marketData.sequence) {
+                    healthMonitor.checkSequence(marketData.symbol, marketData.sequence);
+                }
+                if (marketData.exchange_timestamp) {
+                    healthMonitor.checkLag(marketData.exchange_timestamp);
+                }
+            }
             
             this.updateMarketData(marketData);
             this.updateLastUpdateTime();
@@ -192,19 +245,19 @@ class KrakenDemo {
             
             <div class="market-stats">
                 <div class="market-stat">
-                    <div class="market-stat-label">bid</div>
+                    <div class="market-stat-label">Bid</div>
                     <div class="market-stat-value bid">${this.formatPrice(data.bid)}</div>
                 </div>
                 <div class="market-stat">
-                    <div class="market-stat-label">ask</div>
+                    <div class="market-stat-label">Ask</div>
                     <div class="market-stat-value ask">${this.formatPrice(data.ask)}</div>
                 </div>
                 <div class="market-stat">
-                    <div class="market-stat-label">spread</div>
+                    <div class="market-stat-label">Spread</div>
                     <div class="market-stat-value">${this.formatPrice(data.spread)}</div>
                 </div>
                 <div class="market-stat">
-                    <div class="market-stat-label">vol</div>
+                    <div class="market-stat-label">Volume</div>
                     <div class="market-stat-value">${this.formatVolume(data.volume)}</div>
                 </div>
             </div>
@@ -293,7 +346,7 @@ class KrakenDemo {
         
         // Add to trades if there's a trade
         if (data.last_trade) {
-            this.addTick(data.symbol, data.last_trade);
+            this.addTrade(data.symbol, data.last_trade);
         }
     }
     
@@ -310,13 +363,13 @@ class KrakenDemo {
         chart.update('none');
     }
     
-    addTick(symbol, tick) {
+    addTrade(symbol, trade) {
         this.trades.unshift({ symbol, ...trade, time: new Date() });
         if (this.trades.length > 10) this.trades.pop();
-        this.renderTicks();
+        this.renderTrades();
     }
     
-    renderTicks() {
+    renderTrades() {
         const list = document.getElementById('activityList');
         list.innerHTML = this.trades.map(trade => `
             <div class="activity-item">
@@ -366,17 +419,25 @@ class KrakenDemo {
         }, 1000);
     }
     
-    scheduleReconnect() {
+    scheduleReconnect(reason = 'unknown') {
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
             sdkState.incrementReconnect();
             sdkState.updateConnection('RECONNECTING');
+            
+            if (typeof logReconnect !== 'undefined') {
+                logReconnect(reason, this.reconnectAttempts);
+            }
+            
             const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
             this.updateConnectionStatus(`Reconnecting in ${Math.ceil(delay/1000)}s...`, false);
             setTimeout(() => this.connectWebSocket(), delay);
         } else {
             this.updateConnectionStatus('Connection failed', false);
             sdkState.updateConnection('FAILED');
+            if (typeof healthMonitor !== 'undefined') {
+                healthMonitor.updateConnection(false);
+            }
         }
     }
     
@@ -849,22 +910,22 @@ function executeFault(type) {
     
     switch (type) {
         case 'disconnect':
-            addFaultLog(`[${timestamp}] 🔌 FAULT: Simulating disconnect...`, 'error');
+            addFaultLog(`[${timestamp}] 🔌 FAULT [SIMULATED]: Forcing disconnect...`, 'error');
             if (window.krakenDemo && window.krakenDemo.ws) {
+                window.krakenDemo.lastDisconnectReason = 'fault';
                 window.krakenDemo.ws.close();
                 window.krakenDemo.updateConnectionStatus('Disconnected (Fault)', false);
             }
             // Auto-reconnect after 2 seconds
             setTimeout(() => {
                 if (faultState.disconnect) {
-                    addFaultLog(`[${new Date().toLocaleTimeString()}] 🔄 AUTO-RECONNECT: Attempting reconnection...`, 'warn');
                     faultState.reconnectCount++;
                     updateFaultIndicator('reconnect');
                     window.krakenDemo.connectWebSocket();
                     
                     // Simulate resubscribe
                     setTimeout(() => {
-                        addFaultLog(`[${new Date().toLocaleTimeString()}] 📡 RESUBSCRIBE: Restoring subscriptions...`, 'warn');
+                        addFaultLog(`[${new Date().toLocaleTimeString()}] 📡 RESUBSCRIBE [SIMULATED]: Restoring subscriptions...`, 'warn');
                         faultState.resubCount++;
                         updateFaultIndicator('resub');
                         
@@ -879,32 +940,50 @@ function executeFault(type) {
             break;
             
         case 'latency':
-            addFaultLog(`[${timestamp}] 🐢 FAULT: Injecting 500ms latency...`, 'error');
+            addFaultLog(`[${timestamp}] 🐢 FAULT [SIMULATED]: Injecting 500-1000ms latency...`, 'error');
             // Simulate high latency by delaying message processing
             if (window.krakenDemo) {
                 window.krakenDemo._originalHandleMessage = window.krakenDemo.handleMessage.bind(window.krakenDemo);
                 window.krakenDemo.handleMessage = function(data) {
+                    const injectedDelay = 500 + Math.random() * 500;
                     setTimeout(() => {
                         this._originalHandleMessage(data);
-                    }, 500 + Math.random() * 500); // 500-1000ms delay
+                    }, injectedDelay);
                 };
+                // Mark health as degraded
+                if (typeof healthMonitor !== 'undefined') {
+                    healthMonitor.checks.lagUnderThreshold = false;
+                    healthMonitor.evaluate();
+                }
             }
             break;
             
         case 'packetLoss':
-            addFaultLog(`[${timestamp}] 📦 FAULT: Simulating 30% packet loss...`, 'error');
+            addFaultLog(`[${timestamp}] 📦 FAULT [SIMULATED]: 30% packet loss enabled`, 'error');
+            faultState.simulatedDropCount = 0;
+            faultState.lastSeenSeq = 0;
             // Simulate packet loss by randomly dropping messages
             if (window.krakenDemo) {
                 window.krakenDemo._originalHandleMessage2 = window.krakenDemo.handleMessage.bind(window.krakenDemo);
                 window.krakenDemo.handleMessage = function(data) {
                     if (Math.random() > 0.3) { // 70% chance to process
                         this._originalHandleMessage2(data);
+                        try {
+                            const parsed = JSON.parse(data);
+                            if (parsed.sequence) faultState.lastSeenSeq = parsed.sequence;
+                        } catch (e) {}
                     } else {
-                        // Dropped - trigger resync
-                        if (Math.random() < 0.1) { // 10% chance to trigger resync on drop
+                        // Dropped - log with details
+                        faultState.simulatedDropCount++;
+                        if (faultState.simulatedDropCount % 5 === 0) { // Log every 5th drop
+                            const expectedSeq = faultState.lastSeenSeq + 1;
+                            const gapSize = faultState.simulatedDropCount;
                             faultState.resyncCount++;
                             updateFaultIndicator('resync');
-                            addFaultLog(`[${new Date().toLocaleTimeString()}] 🔁 RESYNC: Gap detected, resyncing...`, 'warn');
+                            addFaultLog(
+                                `[${new Date().toLocaleTimeString()}] 🔁 GAP [SIMULATED]: dropped ${gapSize} msgs, last seq: ${faultState.lastSeenSeq}`,
+                                'warn'
+                            );
                         }
                     }
                 };
@@ -919,20 +998,37 @@ function recoverFromFault(type) {
     switch (type) {
         case 'disconnect':
             addFaultLog(`[${timestamp}] ✅ Disconnect fault disabled`, 'success');
+            if (window.krakenDemo) {
+                window.krakenDemo.lastDisconnectReason = null;
+            }
             break;
             
         case 'latency':
-            addFaultLog(`[${timestamp}] ✅ Latency injection disabled`, 'success');
+            addFaultLog(`[${timestamp}] ✅ Latency injection disabled - restoring normal processing`, 'success');
             if (window.krakenDemo && window.krakenDemo._originalHandleMessage) {
                 window.krakenDemo.handleMessage = window.krakenDemo._originalHandleMessage;
+                delete window.krakenDemo._originalHandleMessage;
+            }
+            // Restore health check
+            if (typeof healthMonitor !== 'undefined') {
+                healthMonitor.checks.lagUnderThreshold = true;
+                healthMonitor.evaluate();
             }
             break;
             
         case 'packetLoss':
-            addFaultLog(`[${timestamp}] ✅ Packet loss simulation disabled`, 'success');
+            const droppedCount = faultState.simulatedDropCount || 0;
+            addFaultLog(`[${timestamp}] ✅ Packet loss disabled - ${droppedCount} msgs were dropped`, 'success');
             if (window.krakenDemo && window.krakenDemo._originalHandleMessage2) {
                 window.krakenDemo.handleMessage = window.krakenDemo._originalHandleMessage2;
+                delete window.krakenDemo._originalHandleMessage2;
             }
+            // Restore health check
+            if (typeof healthMonitor !== 'undefined') {
+                healthMonitor.checks.seqMonotonic = true;
+                healthMonitor.evaluate();
+            }
+            faultState.simulatedDropCount = 0;
             break;
     }
 }
@@ -1244,16 +1340,135 @@ function showAddAlertModal() {
     sdkAlerts.addAlert(symbol.toUpperCase(), condition, price);
 }
 
-// Initialize
-document.addEventListener('DOMContentLoaded', () => {
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// HEALTH BADGE - Enterprise-grade health monitoring
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// HEALTH BADGE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const healthMonitor = {
+    status: 'healthy',
+    checks: { snapshotConsistent: true, seqMonotonic: true, lagUnderThreshold: true, connectionStable: true },
+    lastSeqBySymbol: new Map(),
+    gapCount: 0,
+    lagThresholdMs: 100,
+    lastCheckTime: Date.now(),
+    
+    checkSequence: function(symbol, seq) {
+        if (!seq) return true;
+        var lastSeq = this.lastSeqBySymbol.get(symbol);
+        if (lastSeq !== undefined && seq <= lastSeq) { this.checks.seqMonotonic = false; this.gapCount++; return false; }
+        this.lastSeqBySymbol.set(symbol, seq);
+        return true;
+    },
+    checkLag: function(ts) {
+        if (!ts) return;
+        var lag = Date.now() - new Date(ts).getTime();
+        queueLagTracker.addSample(lag);
+        this.checks.lagUnderThreshold = lag < this.lagThresholdMs;
+    },
+    updateConnection: function(c) { this.checks.connectionStable = c; this.evaluate(); },
+    resetSnapshotConsistency: function() { this.checks.snapshotConsistent = true; this.evaluate(); },
+    evaluate: function() {
+        var c = this.checks;
+        if (!c.connectionStable) this.status = 'unhealthy';
+        else if (!c.snapshotConsistent || !c.seqMonotonic) this.status = 'degraded';
+        else if (!c.lagUnderThreshold) this.status = 'degraded';
+        else this.status = 'healthy';
+        this.render();
+    },
+    render: function() {
+        var badge = document.getElementById('healthBadge');
+        var statusEl = document.getElementById('healthStatus');
+        if (!badge || !statusEl) return;
+        badge.className = 'health-badge ' + this.status;
+        statusEl.textContent = this.status.toUpperCase();
+    },
+    tick: function() {
+        if (Date.now() - this.lastCheckTime > 5000) { this.checks.seqMonotonic = true; this.lastCheckTime = Date.now(); }
+        this.evaluate();
+    }
+};
+setInterval(function() { healthMonitor.tick(); }, 1000);
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// QUEUE LAG TRACKER
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const queueLagTracker = {
+    samples: [],
+    maxSamples: 100,
+    addSample: function(lag) {
+        this.samples.push({ time: Date.now(), lag: lag });
+        if (this.samples.length > this.maxSamples) this.samples.shift();
+        this.render();
+    },
+    getAvgLag: function() {
+        if (this.samples.length === 0) return 0;
+        var sum = 0; for (var i = 0; i < this.samples.length; i++) sum += this.samples[i].lag;
+        return Math.round(sum / this.samples.length);
+    },
+    render: function() {
+        var el = document.getElementById('queueLag');
+        if (!el) return;
+        var avg = this.getAvgLag();
+        el.textContent = avg < 1000 ? avg + 'ms' : (avg / 1000).toFixed(1) + 's';
+        el.style.color = avg < 50 ? 'var(--accent-green)' : avg < 100 ? 'var(--accent-blue)' : avg < 500 ? 'var(--accent-orange)' : 'var(--accent-red)';
+    }
+};
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// RECORD/REPLAY
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const recorder = {
+    isRecording: false,
+    recordedFrames: [],
+    startTime: null,
+    start: function() {
+        this.isRecording = true; this.recordedFrames = []; this.startTime = Date.now(); this.updateUI();
+        addFaultLog('[' + new Date().toLocaleTimeString() + '] ⏺ RECORDING: Started', 'info');
+    },
+    stop: function() {
+        this.isRecording = false;
+        addFaultLog('[' + new Date().toLocaleTimeString() + '] ⏹ STOPPED: ' + this.recordedFrames.length + ' frames', 'success');
+        this.updateUI();
+    },
+    addFrame: function(raw, parsed) {
+        if (!this.isRecording || this.recordedFrames.length >= 10000) return;
+        this.recordedFrames.push({ timestamp: Date.now(), raw: raw, parsed: parsed });
+    },
+    download: function() {
+        if (this.recordedFrames.length === 0) return;
+        var blob = new Blob([JSON.stringify({ frames: this.recordedFrames }, null, 2)], { type: 'application/json' });
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = 'kraken-recording-' + Date.now() + '.json'; a.click();
+    },
+    updateUI: function() {
+        var btn = document.getElementById('recordBtn');
+        if (!btn) return;
+        btn.classList.toggle('recording', this.isRecording);
+        btn.textContent = this.isRecording ? '■ stop' : '● rec';
+    }
+};
+
+function toggleRecording() {
+    if (recorder.isRecording) { recorder.stop(); if (recorder.recordedFrames.length > 0 && confirm('Download?')) recorder.download(); }
+    else recorder.start();
+}
+
+function logReconnect(reason, attempt) { addFaultLog('[' + new Date().toLocaleTimeString() + '] 🔌 RECONNECT #' + attempt + ': ' + reason, 'warn'); }
+function logDisconnect(reason, code) { addFaultLog('[' + new Date().toLocaleTimeString() + '] ❌ DISCONNECT: ' + reason + (code ? ' (' + code + ')' : ''), 'error'); }
+
+
+// Initialize on DOM ready
+document.addEventListener('DOMContentLoaded', function() {
     window.krakenDemo = new KrakenDemo();
-    
-    // Initialize pair manager
     pairManager.render();
-    
-    // Initialize SDK alerts
     sdkAlerts.init();
-    
-    // Initialize fault log
-    addFaultLog(`[${new Date().toLocaleTimeString()}] 🚀 Fault injection ready - toggle to simulate failures`, 'info');
+    if (typeof healthMonitor !== 'undefined') healthMonitor.render();
+    addFaultLog('[' + new Date().toLocaleTimeString() + '] 🚀 SDK console ready', 'info');
 });

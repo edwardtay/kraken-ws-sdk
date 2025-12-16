@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kraken WebSocket SDK - Observability Console</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦑</text></svg>">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
     <style>
@@ -44,7 +45,18 @@
         .status-dot.disconnected { background: var(--accent-red); }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
         
-        .stats-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+        /* Health Badge */
+        .health-badge { display: flex; align-items: center; gap: 4px; padding: 3px 8px; font-size: 0.6rem; font-weight: 500; border: 1px solid var(--border-color); }
+        .health-badge.healthy { background: rgba(102, 204, 102, 0.15); border-color: var(--accent-green); color: var(--accent-green); }
+        .health-badge.degraded { background: rgba(170, 136, 102, 0.15); border-color: var(--accent-orange); color: var(--accent-orange); }
+        .health-badge.unhealthy { background: rgba(204, 102, 102, 0.15); border-color: var(--accent-red); color: var(--accent-red); }
+        
+        /* Record/Replay */
+        .record-btn { }
+        .record-btn.recording { border-color: var(--accent-red); color: var(--accent-red); animation: recordPulse 1s infinite; }
+        @keyframes recordPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        
+        .stats-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
         .stat-card { background: var(--bg-secondary); padding: 6px; border: 1px solid var(--border-color); text-align: center; }
         .stat-value { font-size: 0.95rem; font-weight: 500; color: var(--text-primary); }
         .stat-label { font-size: 0.55rem; color: var(--text-secondary); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -278,8 +290,12 @@
                 <button class="btn btn-primary btn-sm" onclick="reconnectWebSocket()">reconnect</button>
                 <button class="btn btn-secondary btn-sm" onclick="toggleUpdates()">pause</button>
                 <button class="btn btn-secondary btn-sm" onclick="clearData()">clear</button>
+                <button class="btn btn-secondary btn-sm record-btn" id="recordBtn" onclick="toggleRecording()">● rec</button>
             </div>
             <div class="header-right">
+                <div class="health-badge healthy" id="healthBadge" title="Snapshot consistent, seq monotonic, lag < 100ms">
+                    <span id="healthStatus">HEALTHY</span>
+                </div>
                 <div class="status-badge">
                     <div class="status-dot" id="statusIndicator"></div>
                     <span id="connectionStatus">Connecting...</span>
@@ -312,6 +328,10 @@
             <div class="stat-card">
                 <div class="stat-value" id="latencyP95">--</div>
                 <div class="stat-label">p95</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="queueLag">0ms</div>
+                <div class="stat-label">queue lag</div>
             </div>
             <div class="stat-card">
                 <div class="stat-value" id="lastUpdate">--:--:--</div>
