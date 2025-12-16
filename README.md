@@ -362,43 +362,30 @@ if client.is_subscribed(&channel) {
 
 ## Examples
 
-See the `examples/` directory for complete examples:
+See the `examples/` directory for SDK usage examples:
 
-- [`basic_usage.rs`](examples/basic_usage.rs) - Basic SDK usage
-- [`advanced_usage.rs`](examples/advanced_usage.rs) - Advanced features and error handling
-- [`web_demo/`](examples/web_demo/) - **Interactive web dashboard** with real-time market data
-
-### Running Examples
-
-**Command Line Examples:**
 ```bash
 cargo run --example basic_usage
 cargo run --example advanced_usage
+cargo run --example backpressure_demo
+cargo run --example latency_demo
 ```
 
-**Web Demo Dashboard:**
-```bash
-# Option 1: Use the launcher script
-./scripts/run_web_demo.sh
+| Example | Description |
+|---------|-------------|
+| `basic_usage.rs` | Minimal SDK setup, subscribe to ticker |
+| `advanced_usage.rs` | Error handling, multiple callbacks |
+| `backpressure_demo.rs` | Rate limiting, drop policies |
+| `latency_demo.rs` | Latency tracking, percentiles |
+| `sequencing_demo.rs` | Gap detection, resync handling |
 
-# Option 2: Run directly
-cd examples/web_demo && cargo run
-```
+### Demo Applications
 
-Then open your browser to: **http://localhost:3032**
+For interactive demos (not production code), see the [`demo/`](demo/) folder:
+- `demo/web_demo/` - Web-based SDK observability console
+- `demo/orderbook-visualizer/` - React orderbook visualization
 
-### 🌐 Web Demo Features
-
-The web demo connects to **live Kraken WebSocket API** - no mocks, no simulations, real market data:
-
-- **📊 Live Market Data** - Real-time prices from Kraken's production WebSocket feed
-- **🔌 Direct WebSocket** - Connects to `wss://ws.kraken.com` for live ticker/trade streams
-- **📈 SDK Observability** - Health monitoring, latency tracking, sequence gap detection
-- **🎛️ Dynamic Subscriptions** - Add/remove pairs on the fly (max 5)
-- **🔄 Auto Reconnection** - Demonstrates SDK's connection resilience
-- **📱 Responsive Design** - Works on desktop, tablet, and mobile
-
-Default pairs: **BTC/USD, ETH/USD, SOL/USD**
+> ⚠️ **Demo apps are for learning only** - no auth keys, no production claims.
 
 ## Connection State Machine
 
