@@ -7,6 +7,8 @@
 
 A production-grade, correctness-first Kraken WebSocket SDK in Rust, designed for reliable market data ingestion and long-running trading systems.
 
+> **Note:** This is an independent, community-maintained SDK. Not affiliated with Kraken.
+
 ## Who This Is For
 
 - **Production market data ingestion** - reliable, 24/7 data pipelines
