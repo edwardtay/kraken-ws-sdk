@@ -28,7 +28,45 @@ kraken-ws-sdk = "0.1.0"
 tokio = { version = "1.0", features = ["full"] }
 ```
 
-### Basic Usage
+### Stream API (Recommended)
+
+The simplest way to consume events - a single unified stream:
+
+```rust
+use kraken_ws_sdk::{KrakenWsClient, ClientConfig, Channel, SdkEvent};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut client = KrakenWsClient::new(ClientConfig::default());
+    
+    // Get unified event stream
+    let mut events = client.events();
+    
+    // Subscribe and connect
+    client.subscribe(vec![
+        Channel::new("ticker").with_symbol("BTC/USD"),
+        Channel::new("trade").with_symbol("BTC/USD"),
+    ]).await?;
+    client.connect().await?;
+    
+    // Process all events in one place
+    while let Some(event) = events.recv().await {
+        match event {
+            SdkEvent::Ticker(t) => println!("📊 {}: ${}", t.symbol, t.last_price),
+            SdkEvent::Trade(t) => println!("💰 {}: {} @ ${}", t.symbol, t.volume, t.price),
+            SdkEvent::OrderBook(b) => println!("📖 {}: {} bids", b.symbol, b.bids.len()),
+            SdkEvent::State(s) => println!("🔗 Connection: {:?}", s),
+            SdkEvent::Error(e) => eprintln!("❌ Error: {}", e),
+            _ => {}
+        }
+    }
+    Ok(())
+}
+```
+
+### Callback API (Traditional)
+
+For more control, register callbacks per data type:
 
 ```rust
 use kraken_ws_sdk::{
@@ -68,28 +106,22 @@ impl EventCallback for MyCallback {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create client
-    let config = ClientConfig::default();
-    let mut client = KrakenWsClient::new(config);
+    let mut client = KrakenWsClient::new(ClientConfig::default());
     
-    // Register callback
+    // Register callbacks
     let callback: Arc<dyn EventCallback> = Arc::new(MyCallback);
     client.register_callback(DataType::Ticker, callback.clone());
     client.register_callback(DataType::Trade, callback);
     
     // Connect and subscribe
-    client.connect().await?;
-    
-    let channels = vec![
+    client.subscribe(vec![
         Channel::new("ticker").with_symbol("BTC/USD"),
         Channel::new("trade").with_symbol("BTC/USD"),
-    ];
-    client.subscribe(channels).await?;
+    ]).await?;
+    client.connect().await?;
     
     // Keep running
     tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-    
-    // Cleanup
     client.cleanup().await?;
     Ok(())
 }
@@ -321,7 +353,32 @@ The web demo connects to **live Kraken WebSocket API** - no mocks, no simulation
 
 Default pairs: **BTC/USD, ETH/USD, SOL/USD**
 
-## Correctness Contract
+## Correctness Guarantees
+
+This section defines the SDK's behavioral contract. These are guarantees, not just features.
+
+### Message Ordering
+
+| Scope | Guarantee | Notes |
+|-------|-----------|-------|
+| Per symbol, per channel | **Strictly ordered** | Ticker updates for BTC/USD arrive in exchange order |
+| Per symbol, across channels | **No guarantee** | Ticker and trade for same symbol may interleave |
+| Across symbols | **No guarantee** | BTC and ETH updates are independent streams |
+
+**Kraken's guarantee:** Messages within a channel/pair are sequenced. The SDK preserves this ordering.
+
+### Heartbeat & Liveness
+
+| Mechanism | Interval | SDK Behavior |
+|-----------|----------|--------------|
+| Kraken ping | 30s | SDK responds with pong automatically |
+| SDK heartbeat | Configurable (default 30s) | Sends ping, expects pong within `timeout` |
+| No response | After `timeout` | Connection marked stale, reconnect triggered |
+| Kraken `systemStatus` | On connect | Logged, `on_connection_state_change` fired |
+
+**Kraken endpoints:**
+- Public: `wss://ws.kraken.com` - No auth required, ticker/trade/book/ohlc
+- Private: `wss://ws-auth.kraken.com` - Requires API key, ownTrades/openOrders
 
 ### Reconnection Behavior
 
@@ -334,8 +391,8 @@ Default pairs: **BTC/USD, ETH/USD, SOL/USD**
 
 **On successful reconnect:**
 1. All previous subscriptions are automatically restored
-2. `on_reconnect(attempt_number)` callback fires
-3. Order book state is invalidated (snapshot required)
+2. `on_connection_state_change(Connected)` fires
+3. Order book state is **invalidated** - snapshot required before deltas
 
 ### Sequence Gap Handling
 
@@ -358,27 +415,35 @@ Expected: seq 100 → Received: seq 105
 
 ### Order Book Stitching Rules
 
-1. **Snapshot first**: Always wait for snapshot before applying deltas
-2. **Checksum validation**: Verify CRC32 checksum after each update (if provided)
-3. **Sequence ordering**: Deltas must be applied in sequence order
-4. **Stale detection**: Discard deltas older than current snapshot
+The SDK maintains order book state with these invariants:
 
-```rust
-// Stitching state machine
-Disconnected → Snapshot Received → Applying Deltas → Checksum Valid ✓
-                     ↑                    ↓
-                     └── Checksum Fail ───┘ (request new snapshot)
+1. **Snapshot first**: Always wait for snapshot before applying deltas
+2. **Checksum validation**: Verify CRC32 checksum after each update (Kraken provides this)
+3. **Sequence ordering**: Deltas must be applied in sequence order
+4. **Stale detection**: Discard deltas older than current snapshot sequence
+
 ```
+State Machine:
+┌─────────────┐    snapshot    ┌──────────────┐    delta     ┌─────────────┐
+│ Disconnected│───────────────▶│ Snapshot Rcvd│─────────────▶│ Applying    │
+└─────────────┘                └──────────────┘              │ Deltas      │
+       ▲                              ▲                      └──────┬──────┘
+       │                              │                             │
+       │         checksum fail        │      checksum ok            │
+       └──────────────────────────────┴─────────────────────────────┘
+```
+
+**During resync:** Consumer receives `BookState::Resyncing`. Do not use stale book data.
 
 ### Timestamp Guarantees
 
-| Guarantee | Level |
-|-----------|-------|
-| Exchange timestamps | **Monotonic per symbol** (Kraken guarantees) |
-| Receive timestamps | **Best effort** (network jitter possible) |
-| Latency calculation | `receive_time - exchange_time` (clock sync dependent) |
+| Guarantee | Level | Notes |
+|-----------|-------|-------|
+| Exchange timestamps | **Monotonic per symbol** | Kraken guarantees this |
+| Receive timestamps | **Best effort** | Network jitter possible |
+| Latency calculation | `receive_time - exchange_time` | Requires NTP sync |
 
-**Note:** For accurate latency, ensure NTP sync on your system.
+**Clock skew:** If your system clock drifts >1s from exchange, latency metrics will be inaccurate.
 
 ---
 

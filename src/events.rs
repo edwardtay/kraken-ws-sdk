@@ -1,8 +1,83 @@
 //! Event system and callback management
+//!
+//! This module provides two APIs for consuming SDK events:
+//!
+//! 1. **Callback API** - Register callbacks per data type (traditional approach)
+//! 2. **Stream API** - Single unified event stream (recommended for new code)
+//!
+//! # Stream API Example
+//!
+//! ```rust,ignore
+//! use kraken_ws_sdk::{KrakenWsClient, SdkEvent};
+//!
+//! let mut client = KrakenWsClient::new(Default::default());
+//! let mut events = client.events(); // Returns EventReceiver
+//!
+//! while let Some(event) = events.recv().await {
+//!     match event {
+//!         SdkEvent::Ticker(data) => println!("Ticker: {}", data.symbol),
+//!         SdkEvent::Trade(data) => println!("Trade: {}", data.symbol),
+//!         SdkEvent::OrderBook(data) => println!("Book: {}", data.symbol),
+//!         SdkEvent::Ohlc(data) => println!("OHLC: {}", data.symbol),
+//!         SdkEvent::State(state) => println!("State: {:?}", state),
+//!         SdkEvent::Error(err) => eprintln!("Error: {}", err),
+//!     }
+//! }
+//! ```
 
 use crate::{data::*, error::SdkError};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use tokio::sync::mpsc;
+
+/// Unified SDK event enum - single type for all events
+///
+/// This provides a simpler API than callbacks, better composability,
+/// and makes replay/testing easier.
+#[derive(Debug, Clone)]
+pub enum SdkEvent {
+    /// Ticker update
+    Ticker(TickerData),
+    /// Trade executed
+    Trade(TradeData),
+    /// Order book update
+    OrderBook(OrderBookUpdate),
+    /// OHLC candle update
+    Ohlc(OHLCData),
+    /// Connection state change
+    State(ConnectionState),
+    /// Error occurred
+    Error(SdkError),
+}
+
+impl SdkEvent {
+    /// Get the symbol associated with this event, if any
+    pub fn symbol(&self) -> Option<&str> {
+        match self {
+            SdkEvent::Ticker(d) => Some(&d.symbol),
+            SdkEvent::Trade(d) => Some(&d.symbol),
+            SdkEvent::OrderBook(d) => Some(&d.symbol),
+            SdkEvent::Ohlc(d) => Some(&d.symbol),
+            SdkEvent::State(_) | SdkEvent::Error(_) => None,
+        }
+    }
+    
+    /// Check if this is a market data event
+    pub fn is_market_data(&self) -> bool {
+        matches!(self, SdkEvent::Ticker(_) | SdkEvent::Trade(_) | SdkEvent::OrderBook(_) | SdkEvent::Ohlc(_))
+    }
+    
+    /// Check if this is an error event
+    pub fn is_error(&self) -> bool {
+        matches!(self, SdkEvent::Error(_))
+    }
+}
+
+/// Event stream receiver - use this to consume events
+pub type EventReceiver = mpsc::UnboundedReceiver<SdkEvent>;
+
+/// Event stream sender - internal use
+pub type EventSender = mpsc::UnboundedSender<SdkEvent>;
 
 /// Trait for event callbacks
 pub trait EventCallback: Send + Sync {
@@ -14,12 +89,14 @@ pub trait EventCallback: Send + Sync {
     fn on_connection_state_change(&self, state: ConnectionState);
 }
 
-/// Event dispatcher for managing callbacks
+/// Event dispatcher for managing callbacks and event streams
 pub struct EventDispatcher {
     subscribers: Arc<Mutex<HashMap<DataType, Vec<CallbackEntry>>>>,
     connection_listeners: Arc<Mutex<Vec<CallbackEntry>>>,
     error_callbacks: Arc<Mutex<Vec<CallbackEntry>>>,
     next_id: Arc<Mutex<u64>>,
+    /// Event stream senders for the unified stream API
+    event_streams: Arc<Mutex<Vec<EventSender>>>,
 }
 
 /// Callback entry with unique ID for management
@@ -36,6 +113,38 @@ impl EventDispatcher {
             connection_listeners: Arc::new(Mutex::new(Vec::new())),
             error_callbacks: Arc::new(Mutex::new(Vec::new())),
             next_id: Arc::new(Mutex::new(0)),
+            event_streams: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+    
+    /// Create a new event stream receiver
+    /// 
+    /// Returns an unbounded receiver that will receive all SDK events.
+    /// Multiple streams can be created - each receives all events.
+    /// 
+    /// # Example
+    /// ```rust,ignore
+    /// let mut events = dispatcher.create_event_stream();
+    /// while let Some(event) = events.recv().await {
+    ///     match event {
+    ///         SdkEvent::Ticker(t) => println!("{}: {}", t.symbol, t.last_price),
+    ///         _ => {}
+    ///     }
+    /// }
+    /// ```
+    pub fn create_event_stream(&self) -> EventReceiver {
+        let (tx, rx) = mpsc::unbounded_channel();
+        if let Ok(mut streams) = self.event_streams.lock() {
+            streams.push(tx);
+        }
+        rx
+    }
+    
+    /// Send event to all stream subscribers
+    fn send_to_streams(&self, event: SdkEvent) {
+        if let Ok(mut streams) = self.event_streams.lock() {
+            // Remove closed streams and send to active ones
+            streams.retain(|tx| tx.send(event.clone()).is_ok());
         }
     }
     
@@ -155,8 +264,12 @@ impl EventDispatcher {
         }
     }
     
-    /// Dispatch ticker data to registered callbacks
+    /// Dispatch ticker data to registered callbacks and streams
     pub fn dispatch_ticker(&self, data: TickerData) {
+        // Send to event streams
+        self.send_to_streams(SdkEvent::Ticker(data.clone()));
+        
+        // Send to callbacks
         if let Ok(subscribers) = self.subscribers.lock() {
             if let Some(callbacks) = subscribers.get(&DataType::Ticker) {
                 tracing::debug!("Dispatching ticker data to {} callbacks", callbacks.len());
@@ -177,8 +290,12 @@ impl EventDispatcher {
         }
     }
     
-    /// Dispatch order book data to registered callbacks
+    /// Dispatch order book data to registered callbacks and streams
     pub fn dispatch_orderbook(&self, data: OrderBookUpdate) {
+        // Send to event streams
+        self.send_to_streams(SdkEvent::OrderBook(data.clone()));
+        
+        // Send to callbacks
         if let Ok(subscribers) = self.subscribers.lock() {
             if let Some(callbacks) = subscribers.get(&DataType::OrderBook) {
                 tracing::debug!("Dispatching orderbook data to {} callbacks", callbacks.len());
@@ -198,8 +315,12 @@ impl EventDispatcher {
         }
     }
     
-    /// Dispatch trade data to registered callbacks
+    /// Dispatch trade data to registered callbacks and streams
     pub fn dispatch_trade(&self, data: TradeData) {
+        // Send to event streams
+        self.send_to_streams(SdkEvent::Trade(data.clone()));
+        
+        // Send to callbacks
         if let Ok(subscribers) = self.subscribers.lock() {
             if let Some(callbacks) = subscribers.get(&DataType::Trade) {
                 tracing::debug!("Dispatching trade data to {} callbacks", callbacks.len());
@@ -219,8 +340,12 @@ impl EventDispatcher {
         }
     }
     
-    /// Dispatch OHLC data to registered callbacks
+    /// Dispatch OHLC data to registered callbacks and streams
     pub fn dispatch_ohlc(&self, data: OHLCData) {
+        // Send to event streams
+        self.send_to_streams(SdkEvent::Ohlc(data.clone()));
+        
+        // Send to callbacks
         if let Ok(subscribers) = self.subscribers.lock() {
             if let Some(callbacks) = subscribers.get(&DataType::OHLC) {
                 tracing::debug!("Dispatching OHLC data to {} callbacks", callbacks.len());
@@ -240,8 +365,12 @@ impl EventDispatcher {
         }
     }
     
-    /// Dispatch error to all registered callbacks
+    /// Dispatch error to all registered callbacks and streams
     pub fn dispatch_error(&self, error: SdkError) {
+        // Send to event streams
+        self.send_to_streams(SdkEvent::Error(error.clone()));
+        
+        // Send to callbacks
         if let Ok(subscribers) = self.subscribers.lock() {
             let total_callbacks: usize = subscribers.values().map(|v| v.len()).sum();
             tracing::debug!("Dispatching error to {} callbacks", total_callbacks);
@@ -258,8 +387,12 @@ impl EventDispatcher {
         }
     }
     
-    /// Dispatch connection state change to registered listeners
+    /// Dispatch connection state change to registered listeners and streams
     pub fn dispatch_connection_state_change(&self, state: ConnectionState) {
+        // Send to event streams
+        self.send_to_streams(SdkEvent::State(state.clone()));
+        
+        // Send to callbacks
         if let Ok(listeners) = self.connection_listeners.lock() {
             tracing::debug!("Dispatching connection state change to {} listeners", listeners.len());
             
@@ -291,6 +424,7 @@ impl Clone for EventDispatcher {
             connection_listeners: Arc::clone(&self.connection_listeners),
             error_callbacks: Arc::clone(&self.error_callbacks),
             next_id: Arc::clone(&self.next_id),
+            event_streams: Arc::clone(&self.event_streams),
         }
     }
 }

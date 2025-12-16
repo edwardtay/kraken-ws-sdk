@@ -110,6 +110,27 @@ impl KrakenWsClient {
         self.event_dispatcher.register_connection_listener(callback)
     }
     
+    /// Get a unified event stream
+    /// 
+    /// Returns a receiver that will receive all SDK events (ticker, trade, book, ohlc, state, error).
+    /// This is the recommended API for new code - simpler than callbacks and better for testing.
+    /// 
+    /// # Example
+    /// ```rust,ignore
+    /// let mut events = client.events();
+    /// while let Some(event) = events.recv().await {
+    ///     match event {
+    ///         SdkEvent::Ticker(t) => println!("{}: {}", t.symbol, t.last_price),
+    ///         SdkEvent::Trade(t) => println!("Trade: {} @ {}", t.symbol, t.price),
+    ///         SdkEvent::State(s) => println!("Connection: {:?}", s),
+    ///         _ => {}
+    ///     }
+    /// }
+    /// ```
+    pub fn events(&self) -> crate::events::EventReceiver {
+        self.event_dispatcher.create_event_stream()
+    }
+    
     /// Disconnect from the WebSocket API
     pub async fn disconnect(&mut self) -> Result<(), SdkError> {
         tracing::info!("Disconnecting from Kraken WebSocket API");
