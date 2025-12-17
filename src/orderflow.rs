@@ -280,21 +280,34 @@ impl OrderFlowTracker {
                 // Level existed before - check for size changes
                 let delta = curr_level.volume - prev_level.volume;
                 
-                if delta.abs() >= min_change && self.config.track_size_changes {
+                // Check for large order threshold crossings FIRST (always significant)
+                let crossed_threshold_up = curr_level.volume >= threshold && prev_level.volume < threshold;
+                let crossed_threshold_down = prev_level.volume >= threshold && curr_level.volume < threshold;
+                
+                if crossed_threshold_up {
+                    events.push(self.create_event(
+                        symbol,
+                        *price,
+                        side,
+                        FlowEventType::LargeOrderAppeared,
+                        curr_level.volume,
+                        prev_level.volume,
+                    ));
+                } else if crossed_threshold_down {
+                    events.push(self.create_event(
+                        symbol,
+                        *price,
+                        side,
+                        FlowEventType::LargeOrderDisappeared,
+                        curr_level.volume,
+                        prev_level.volume,
+                    ));
+                } else if delta.abs() >= min_change && self.config.track_size_changes {
+                    // Regular size changes (only if tracking is enabled and delta is significant)
                     let event_type = if delta > Decimal::ZERO {
-                        // Check if this is a large order appearing
-                        if curr_level.volume >= threshold && prev_level.volume < threshold {
-                            FlowEventType::LargeOrderAppeared
-                        } else {
-                            FlowEventType::SizeIncreased { delta }
-                        }
+                        FlowEventType::SizeIncreased { delta }
                     } else {
-                        // Check if a large order disappeared
-                        if prev_level.volume >= threshold && curr_level.volume < threshold {
-                            FlowEventType::LargeOrderDisappeared
-                        } else {
-                            FlowEventType::SizeDecreased { delta: delta.abs() }
-                        }
+                        FlowEventType::SizeDecreased { delta: delta.abs() }
                     };
                     
                     events.push(self.create_event(
@@ -931,5 +944,70 @@ mod tests {
         // Unknown for untracked symbol
         assert_eq!(tracker.check_status("ETH/USD"), MarketStatus::Unknown);
     }
+    
+    #[test]
+    fn test_large_order_detection_with_small_delta() {
+        // Test that large order detection fires even when delta < min_size_change
+        // This was a bug: threshold crossing was gated by min_size_change
+        let mut config = OrderFlowConfig::default();
+        config.large_order_threshold = dec("10.0");
+        config.min_size_change = dec("2.0");  // Large min_size_change
+        let tracker = OrderFlowTracker::with_config(config);
+        
+        let mut book = OrderBook::new("BTC/USD");
+        
+        // Start with 9.5 BTC (below threshold)
+        book.bids.insert(dec("50000"), PriceLevel {
+            price: dec("50000"),
+            volume: dec("9.5"),
+            timestamp: Utc::now(),
+        });
+        
+        // Initial snapshot
+        tracker.track_update(&book);
+        
+        // Increase to 10.2 BTC (crosses threshold, but delta is only 0.7 < 2.0)
+        book.bids.get_mut(&dec("50000")).unwrap().volume = dec("10.2");
+        
+        let events = tracker.track_update(&book);
+        
+        // Should detect LargeOrderAppeared even though delta (0.7) < min_size_change (2.0)
+        assert!(events.iter().any(|e| matches!(e.event_type, FlowEventType::LargeOrderAppeared)),
+            "Large order detection should fire when crossing threshold, regardless of min_size_change");
+    }
+    
+    #[test]
+    fn test_large_order_detection_without_size_tracking() {
+        // Test that large order detection works even when track_size_changes is false
+        let mut config = OrderFlowConfig::default();
+        config.large_order_threshold = dec("10.0");
+        config.track_size_changes = false;  // Disable size change tracking
+        let tracker = OrderFlowTracker::with_config(config);
+        
+        let mut book = OrderBook::new("BTC/USD");
+        
+        // Start with 9.0 BTC (below threshold)
+        book.bids.insert(dec("50000"), PriceLevel {
+            price: dec("50000"),
+            volume: dec("9.0"),
+            timestamp: Utc::now(),
+        });
+        
+        tracker.track_update(&book);
+        
+        // Increase to 12.0 BTC (crosses threshold)
+        book.bids.get_mut(&dec("50000")).unwrap().volume = dec("12.0");
+        
+        let events = tracker.track_update(&book);
+        
+        // Should detect LargeOrderAppeared even though track_size_changes is false
+        assert!(events.iter().any(|e| matches!(e.event_type, FlowEventType::LargeOrderAppeared)),
+            "Large order detection should work even when track_size_changes is false");
+        
+        // Should NOT have SizeIncreased events (track_size_changes is false)
+        assert!(!events.iter().any(|e| matches!(e.event_type, FlowEventType::SizeIncreased { .. })),
+            "Regular size changes should be suppressed when track_size_changes is false");
+    }
+
 }
 
