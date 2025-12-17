@@ -318,6 +318,165 @@ if let Some((best_bid, best_ask)) = client.get_best_bid_ask("BTC/USD") {
 }
 ```
 
+## Order Book Visualization API
+
+The SDK provides a comprehensive `visualization` module for building professional-grade order book interfaces:
+
+```rust
+use kraken_ws_sdk::visualization::*;
+use rust_decimal::Decimal;
+use std::str::FromStr;
+```
+
+### Price Aggregation (Tick Size Grouping)
+
+Reduce noise by grouping price levels into buckets:
+
+```rust
+// Aggregate BTC book into $100 buckets
+let tick_size = Decimal::from_str("100.0").unwrap();
+let aggregated = order_book.aggregate(tick_size);
+
+for level in &aggregated.bids {
+    println!("${}: {} BTC ({} orders)", 
+        level.price, level.volume, level.order_count);
+}
+```
+
+### Depth Ladder with Cumulative Sizes
+
+Get a visualization-ready ladder with cumulative volumes:
+
+```rust
+let ladder = order_book.get_depth_ladder(20); // Top 20 levels
+
+// Render horizontal bars showing cumulative depth
+for level in &ladder.bids {
+    println!("{} | {} | cum: {} ({}%)", 
+        level.price, 
+        level.volume,
+        level.cumulative_volume,
+        level.cumulative_percent);
+}
+
+// Access spread and mid price
+println!("Mid: {:?}, Spread: {:?} ({:?} bps)", 
+    ladder.mid_price, ladder.spread, ladder.spread_bps);
+```
+
+### Liquidity Imbalance Indicator
+
+Measure bid/ask imbalance over configurable depth:
+
+```rust
+// Get imbalance ratio (-1.0 = all asks, +1.0 = all bids)
+let imbalance = order_book.get_imbalance_ratio(10);
+
+if imbalance > Decimal::from_str("0.3").unwrap() {
+    println!("Strong bid pressure - potential upward move");
+}
+
+// Get detailed metrics with VWAP
+let metrics = order_book.get_imbalance_metrics(10);
+println!("Bid VWAP: {:?}, Ask VWAP: {:?}", metrics.bid_vwap, metrics.ask_vwap);
+
+// Get trading signal
+let pressure = order_book.get_book_pressure(10);
+match pressure.signal {
+    PressureSignal::StrongBuy => println!("Strong buy signal"),
+    PressureSignal::StrongSell => println!("Strong sell signal"),
+    _ => {}
+}
+```
+
+### Order Flow Tracking (Large Order Detection)
+
+Detect when large orders appear or disappear:
+
+```rust
+let mut flow_tracker = OrderFlowTracker::with_config(OrderFlowConfig {
+    large_order_threshold: Decimal::from(10), // 10 BTC = large
+    track_depth: 25,
+    ..Default::default()
+});
+
+// Register callback for flow events
+flow_tracker.on_event(|event| {
+    match event.event_type {
+        FlowEventType::LargeOrderAppeared => {
+            println!("Large {} appeared at {}", 
+                if event.side == FlowSide::Bid { "bid" } else { "ask" },
+                event.price);
+        }
+        FlowEventType::LargeOrderDisappeared => {
+            println!("Large order gone from {}", event.price);
+        }
+        _ => {}
+    }
+});
+
+// On each order book update
+let events = flow_tracker.track_update(&order_book);
+```
+
+### Recent Trades Overlay
+
+Track trades aligned with price levels:
+
+```rust
+let trade_tracker = TradesByPriceLevel::new();
+
+// On each trade
+trade_tracker.add_trade(&trade_data);
+
+// Get trades at a specific price level
+let trades = trade_tracker.get_trades_at_price("BTC/USD", price);
+
+// Get aggregated stats for overlay visualization
+let overlay = trade_tracker.get_trade_overlay("BTC/USD");
+for stats in overlay {
+    println!("{}: {} trades, {} buy / {} sell", 
+        stats.price, stats.trade_count, stats.buy_volume, stats.sell_volume);
+}
+```
+
+### Market Health / Stale Detection
+
+Detect halted or stale markets:
+
+```rust
+let health_tracker = MarketHealthTracker::new();
+
+// On each update
+health_tracker.record_update("BTC/USD");
+
+// Check market status
+match health_tracker.check_status("BTC/USD") {
+    MarketStatus::Active => println!("Market active"),
+    MarketStatus::Stale => println!("No updates for 5+ seconds"),
+    MarketStatus::Halted => println!("Market may be halted"),
+    MarketStatus::Unknown => println!("No data yet"),
+}
+
+// Get time since last update (for latency indicator)
+if let Some(ms) = health_tracker.get_time_since_update("BTC/USD") {
+    println!("Last update: {}ms ago", ms);
+}
+```
+
+### Visualization Feature Summary
+
+| Feature | Method | Description |
+|---------|--------|-------------|
+| Price aggregation | `order_book.aggregate(tick_size)` | Group levels by tick size |
+| Depth ladder | `order_book.get_depth_ladder(n)` | Cumulative sizes, percentages |
+| Imbalance ratio | `order_book.get_imbalance_ratio(n)` | -1.0 to +1.0 bid/ask balance |
+| Imbalance metrics | `order_book.get_imbalance_metrics(n)` | VWAP, volumes, depth |
+| Book pressure | `order_book.get_book_pressure(n)` | Trading signal interpretation |
+| Order flow | `OrderFlowTracker::track_update()` | Large order detection |
+| Trade overlay | `TradesByPriceLevel::add_trade()` | Trades at price levels |
+| Market health | `MarketHealthTracker::check_status()` | Stale/halt detection |
+
 ## Advanced Features
 
 ### Multiple Callbacks

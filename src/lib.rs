@@ -163,6 +163,94 @@ pub mod extended {
     
     // Telemetry
     pub use crate::telemetry::{TelemetryConfig, MetricsRegistry};
+    
+    // Order book visualization
+    pub use crate::orderbook::{
+        AggregatedBook, AggregatedLevel, DepthLadder, LadderLevel,
+        ImbalanceMetrics, BookPressure, PressureSignal,
+    };
+    
+    // Order flow tracking
+    pub use crate::orderflow::{
+        OrderFlowTracker, OrderFlowConfig, FlowEvent, FlowEventType, FlowSide,
+        TradesByPriceLevel, TradeOverlayConfig, LevelTrade, LevelTradeStats,
+        MarketHealthTracker, MarketStatus, StaleDetectionConfig,
+    };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// VISUALIZATION API - For building order book UIs
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/// Visualization API for building professional order book interfaces
+///
+/// This module provides everything needed to build a professional-grade
+/// order book visualization with:
+/// - Real-time depth ladders with cumulative sizes
+/// - Price aggregation (tick size grouping)
+/// - Liquidity imbalance indicators
+/// - Order flow highlighting (large order detection)
+/// - Recent trades overlay by price level
+/// - Market health/stale detection
+///
+/// ## Example
+///
+/// ```rust,ignore
+/// use kraken_ws_sdk::visualization::*;
+/// use rust_decimal_macros::dec;
+///
+/// // Set up order flow tracking
+/// let flow_tracker = OrderFlowTracker::with_config(OrderFlowConfig {
+///     large_order_threshold: dec!(10.0),
+///     track_depth: 25,
+///     ..Default::default()
+/// });
+///
+/// // Set up trade overlay
+/// let trade_tracker = TradesByPriceLevel::new();
+///
+/// // Set up market health monitoring
+/// let health_tracker = MarketHealthTracker::new();
+///
+/// // On each order book update:
+/// let ladder = order_book.get_depth_ladder(20);
+/// let flow_events = flow_tracker.track_update(&order_book);
+/// let imbalance = order_book.get_imbalance_ratio(10);
+/// health_tracker.record_update(&order_book.symbol);
+///
+/// // Render your UI with this data
+/// ```
+pub mod visualization {
+    // Order book structures
+    pub use crate::orderbook::{
+        OrderBook, OrderBookManager,
+        AggregatedBook, AggregatedLevel,
+        DepthLadder, LadderLevel,
+        ImbalanceMetrics, BookPressure, PressureSignal,
+    };
+    
+    // Order flow tracking
+    pub use crate::orderflow::{
+        OrderFlowTracker, OrderFlowConfig,
+        FlowEvent, FlowEventType, FlowSide,
+    };
+    
+    // Trade overlay
+    pub use crate::orderflow::{
+        TradesByPriceLevel, TradeOverlayConfig,
+        LevelTrade, LevelTradeStats,
+    };
+    
+    // Market health
+    pub use crate::orderflow::{
+        MarketHealthTracker, MarketStatus, StaleDetectionConfig,
+    };
+    
+    // Data types needed for visualization
+    pub use crate::data::{PriceLevel, TradeData, TradeSide};
+    
+    // Latency for UI indicators
+    pub use crate::latency::{LatencyTracker, LatencyStats, format_latency};
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -192,11 +280,12 @@ pub mod exchange;
 pub mod latency;
 pub mod middleware;
 pub mod orderbook;
+pub mod orderflow;  // Order flow tracking for visualization
 pub mod parser;
 pub mod retry;
 pub mod sdk;
 pub mod sequencing;
-pub mod state;  // NEW: Connection state machine
+pub mod state;  // Connection state machine
 pub mod subscription;
 pub mod telemetry;
 
