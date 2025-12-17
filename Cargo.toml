@@ -1,13 +1,13 @@
 [package]
 name = "kraken-ws-sdk"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.70"
-description = "A high-performance, production-grade SDK for Kraken's WebSocket API with backpressure control, latency tracking, and chaos engineering support"
+description = "Production-grade Kraken WebSocket SDK with order book visualization API, backpressure control, latency tracking, and order flow analysis"
 license = "MIT"
-keywords = ["kraken", "websocket", "cryptocurrency", "trading", "sdk"]
+keywords = ["kraken", "websocket", "cryptocurrency", "trading", "orderbook"]
 categories = ["api-bindings", "asynchronous", "web-programming::websocket"]
-repository = "https://github.com/example/kraken-ws-sdk"
+repository = "https://github.com/edwardtay/kraken-ws-sdk"
 documentation = "https://docs.rs/kraken-ws-sdk"
 readme = "README.md"
 authors = ["Kraken WS SDK Contributors"]

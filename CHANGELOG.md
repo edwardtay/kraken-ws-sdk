@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2024-12-17
+
+### Added
+- **Complete Order Book Visualization API** for building professional trading interfaces
+  - `order_book.aggregate(tick_size)` - Price aggregation with configurable tick sizes
+  - `order_book.get_depth_ladder(n)` - Depth ladder with cumulative sizes and percentages
+  - `order_book.get_imbalance_ratio(n)` - Liquidity imbalance indicator (-1.0 to +1.0)
+  - `order_book.get_imbalance_metrics(n)` - Detailed metrics with VWAP calculations
+  - `order_book.get_book_pressure(n)` - Trading signal interpretation
+- **OrderFlowTracker** - Detect large order appearance/disappearance with event callbacks
+  - Configurable large order thresholds
+  - Size change tracking
+  - Best bid/ask change detection
+  - Event history with sequence numbers
+- **TradesByPriceLevel** - Recent trades aligned with price levels for overlay visualization
+  - Trade aggregation by price level
+  - Configurable time windows
+  - Buy/sell volume tracking
+  - Age tracking for fade effects
+- **MarketHealthTracker** - Market stale/halt detection
+  - Configurable stale thresholds
+  - Time since last update tracking
+  - Status enum: Active, Stale, Halted, Unknown
+- New `visualization` module exporting all visualization APIs
+- New data structures:
+  - `DepthLadder` with cumulative volumes and percentages
+  - `AggregatedBook` for tick-grouped price levels
+  - `ImbalanceMetrics` with VWAP and volume ratios
+  - `BookPressure` with trading signal interpretation
+  - `FlowEvent` for order flow changes
+  - `LevelTradeStats` for trade overlay data
+- Complete API documentation in `VISUALIZATION_API.md`
+- Visualization examples in README
+
+### Changed
+- Enhanced `OrderBook` with 8 new visualization methods
+- Updated `extended` module to include visualization APIs
+- Improved description in Cargo.toml to highlight visualization features
+
+### Documentation
+- Added comprehensive visualization API reference
+- Updated README with visualization examples
+- All new APIs fully documented with inline docs
+
+### Testing
+- 4 new unit tests for order flow tracking
+- All tests passing (28 total)
+
+### Security
+- cargo audit clean (0 vulnerabilities)
+
 ## [0.2.0] - 2024-12-16
 
 ### Added
