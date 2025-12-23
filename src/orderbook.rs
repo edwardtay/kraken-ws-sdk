@@ -172,6 +172,29 @@ pub enum PressureSignal {
     StrongSell,
 }
 
+/// Filtered order book within a price range
+/// 
+/// Used to focus on liquidity near the mid-price, filtering out
+/// distant price levels that add noise to visualization.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FilteredBook {
+    pub symbol: String,
+    /// Filtered bid levels within range
+    pub bids: Vec<PriceLevel>,
+    /// Filtered ask levels within range
+    pub asks: Vec<PriceLevel>,
+    /// Mid price at time of filtering
+    pub mid_price: Decimal,
+    /// Range percentage used for filtering
+    pub range_percent: Decimal,
+    /// Minimum price in range
+    pub price_min: Decimal,
+    /// Maximum price in range
+    pub price_max: Decimal,
+    /// Timestamp
+    pub timestamp: DateTime<Utc>,
+}
+
 impl OrderBookManager {
     pub fn new() -> Self {
         Self {
@@ -722,6 +745,50 @@ impl OrderBook {
     /// Get best bid level (price + volume)
     pub fn get_best_bid(&self) -> Option<&PriceLevel> {
         self.bids.values().next_back()
+    }
+    
+    /// Filter book to only show levels within ±X% of mid-price
+    ///
+    /// This is useful for depth range selection - focusing on nearby
+    /// liquidity rather than distant price levels.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// // Get levels within ±0.5% of mid-price
+    /// let filtered = order_book.filter_by_spread(dec!(0.5));
+    /// 
+    /// println!("Focused on {} - {} range", filtered.price_min, filtered.price_max);
+    /// for bid in &filtered.bids {
+    ///     println!("Bid: {} @ {}", bid.volume, bid.price);
+    /// }
+    /// ```
+    pub fn filter_by_spread(&self, percent: Decimal) -> Option<FilteredBook> {
+        let mid = self.get_mid_price()?;
+        let range = mid * percent / Decimal::from(100);
+        let price_min = mid - range;
+        let price_max = mid + range;
+        
+        let bids: Vec<PriceLevel> = self.bids.iter()
+            .rev()
+            .filter(|(price, _)| **price >= price_min && **price <= price_max)
+            .map(|(_, level)| level.clone())
+            .collect();
+        
+        let asks: Vec<PriceLevel> = self.asks.iter()
+            .filter(|(price, _)| **price >= price_min && **price <= price_max)
+            .map(|(_, level)| level.clone())
+            .collect();
+        
+        Some(FilteredBook {
+            symbol: self.symbol.clone(),
+            bids,
+            asks,
+            mid_price: mid,
+            range_percent: percent,
+            price_min,
+            price_max,
+            timestamp: self.last_update,
+        })
     }
     
     /// Get best ask level (price + volume)

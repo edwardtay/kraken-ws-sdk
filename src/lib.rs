@@ -145,6 +145,103 @@ pub mod prelude {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// TRADING API - For authenticated trading operations
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/// Trading API for authenticated operations
+///
+/// This module provides everything needed for trading on Kraken:
+/// - REST API client for orders, balances, positions
+/// - Private WebSocket for real-time execution reports
+/// - Rate limiting and authentication
+///
+/// ## Example
+///
+/// ```rust,ignore
+/// use kraken_ws_sdk::trading_api::*;
+///
+/// // Create REST client from environment
+/// let client = KrakenRestClient::from_env()?;
+///
+/// // Get balances
+/// let balances = client.get_balance().await?;
+/// println!("BTC: {}", balances.available("XXBT"));
+///
+/// // Place a limit order
+/// let order = OrderRequest::limit_buy("XBT/USD", dec!(0.001), dec!(50000.00))
+///     .post_only()
+///     .with_client_id("my-order-1");
+/// let response = client.add_order(order).await?;
+/// println!("Order placed: {:?}", response.txid);
+///
+/// // Subscribe to execution reports
+/// let token = client.get_websocket_token().await?;
+/// let mut ws = PrivateWsClient::new(PrivateWsConfig::new(token));
+/// ws.connect().await?;
+///
+/// let mut events = ws.subscribe();
+/// while let Ok(event) = events.recv().await {
+///     match event {
+///         PrivateEvent::Execution(exec) => {
+///             println!("Fill: {} {} @ {}", exec.volume, exec.pair, exec.price);
+///         }
+///         PrivateEvent::OrderUpdate(update) => {
+///             println!("Order {}: {:?}", update.txid, update.status);
+///         }
+///         _ => {}
+///     }
+/// }
+/// ```
+pub mod trading_api {
+    // Authentication
+    pub use crate::auth::Credentials;
+    
+    // Rate limiting
+    pub use crate::rate_limit::{RateLimiter, AccountTier, EndpointCost, RateLimitStats};
+    
+    // REST client
+    pub use crate::rest_client::{
+        KrakenRestClient, TradesHistoryOptions, ClosedOrdersOptions,
+    };
+    
+    // Trading types
+    pub use crate::trading::{
+        OrderSide, OrderType, TimeInForce, OrderFlags,
+        OrderRequest, OrderResponse, OrderDescription,
+        OrderStatus, Order, Execution,
+        CancelRequest, CancelResponse, EditOrderRequest,
+        AssetBalance, Balances, Position,
+    };
+    
+    // Private WebSocket
+    pub use crate::private_ws::{
+        PrivateWsClient, PrivateWsConfig, PrivateChannel,
+        PrivateEvent, OrderUpdate, BalanceUpdate,
+    };
+    
+    // Batch orders & advanced order types
+    pub use crate::batch_orders::{
+        BatchOrderRequest, BatchOrderResult, BatchOrderError,
+        OcoOrder, OcoOrderResult,
+        BracketOrder, BracketOrderResult,
+        sizing,
+    };
+    
+    // Performance tracking
+    pub use crate::performance::{
+        PerformanceTracker, PerformanceStats,
+        CompletedTrade, EquityPoint,
+    };
+    
+    // Alerts
+    pub use crate::alerts::{
+        AlertManager, Alert, AlertType, AlertSeverity,
+        AlertChannel, ConsoleChannel, WebhookChannel,
+        price_alert, order_filled, pnl_alert, risk_alert,
+    };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // EXTENDED API - STABLE (for advanced use cases)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -227,6 +324,7 @@ pub mod visualization {
         AggregatedBook, AggregatedLevel,
         DepthLadder, LadderLevel,
         ImbalanceMetrics, BookPressure, PressureSignal,
+        FilteredBook,  // Depth range selector
     };
     
     // Order flow tracking
@@ -251,6 +349,30 @@ pub mod visualization {
     
     // Latency for UI indicators
     pub use crate::latency::{LatencyTracker, LatencyStats, format_latency};
+    
+    /// Advanced visualization features for professional trading UIs
+    ///
+    /// These are opt-in features that provide edge for power users
+    /// without cluttering the basic API.
+    pub mod advanced {
+        // Whale detection (statistical outliers)
+        pub use crate::whale_detection::{
+            WhaleDetector, WhaleConfig,
+            WhaleDetection, WhaleSide,
+        };
+        
+        // Liquidity heatmap (persistence tracking)
+        pub use crate::liquidity_heatmap::{
+            LiquidityHeatmap, HeatmapConfig,
+            HeatLevel, HeatmapSnapshot, HeatmapSide,
+        };
+        
+        // Spoofing detection (vanishing liquidity)
+        pub use crate::spoofing_detection::{
+            SpoofingDetector, SpoofingConfig,
+            SpoofingAlert, SpoofSide,
+        };
+    }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -281,6 +403,9 @@ pub mod latency;
 pub mod middleware;
 pub mod orderbook;
 pub mod orderflow;  // Order flow tracking for visualization
+pub mod whale_detection;  // Statistical whale order detection
+pub mod liquidity_heatmap;  // Liquidity persistence tracking
+pub mod spoofing_detection;  // Spoofing pattern detection
 pub mod parser;
 pub mod retry;
 pub mod sdk;
@@ -288,6 +413,18 @@ pub mod sequencing;
 pub mod state;  // Connection state machine
 pub mod subscription;
 pub mod telemetry;
+
+// Private/authenticated API modules
+pub mod auth;           // API key authentication & request signing
+pub mod rate_limit;     // Kraken rate limiting
+pub mod trading;        // Order types, positions, balances
+pub mod rest_client;    // REST API client
+pub mod private_ws;     // Private WebSocket channels
+
+// Advanced trading features
+pub mod batch_orders;   // Batch orders, OCO, bracket orders
+pub mod performance;    // Performance tracking (P&L, Sharpe, drawdown)
+pub mod alerts;         // Alert system (webhook, Discord, Telegram)
 
 #[cfg(feature = "wasm")]
 pub mod wasm;

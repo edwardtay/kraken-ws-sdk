@@ -1,7 +1,47 @@
+# Build artifacts
 /target
+target/
+
+# Environment files (except examples)
 .env
+.env.local
+.env.*.local
+!.env.example
+
+# Secrets & credentials
 *.pem
 *.key
+*secret*
+*credential*
+
+# IDE & editor
 .kiro/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Private folders at any level
 private/
-!.env.example
+**/private/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Node
+node_modules/
+
+# Data
+data/orderbooks/
+
+# Repo templates (for creating separate repos)
+repos/
+
+# Exclude visualizer and strategy builder (separate repos)
+orderbook-visualizer/
+examples/web_demo/
